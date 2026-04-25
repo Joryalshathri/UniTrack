@@ -119,18 +119,18 @@ CREATE INDEX idx_attendance_student_date ON attendance(student_id, attendance_da
 -- Insert Sample Users
 INSERT INTO users (username, email, password_hash, role, first_name, last_name) VALUES
 -- Admin User
-('admin123', 'admin@university.edu', 'hashed_password_admin', 'admin', 'Admin', 'User'),
+('admin123', 'admin@university.edu', '$2b$10$dOJoBsvTPUe02fRcLWrMAebwdV742vhtH2vM1un3q/4KXOknITEfG', 'admin', 'Admin', 'User'),
 
 -- Teacher Users
-('teacher_john', 'john@university.edu', 'hashed_password_john', 'teacher', 'John', 'Smith'),
-('teacher_sarah', 'sarah@university.edu', 'hashed_password_sarah', 'teacher', 'Sarah', 'Johnson'),
+('teacher_john', 'john@university.edu', '$2b$10$WlNVa7Ks5Hb.WWz.0lb.husKp5JLFla.TxEJnaeTZXJ7dEiDL0eFy', 'teacher', 'John', 'Smith'),
+('teacher_sarah', 'sarah@university.edu', '$2b$10$dpDkD7.SDwbC4t5sC0Krre9cN8oesxzNXydOA45azoR7K7GkF5fQy', 'teacher', 'Sarah', 'Johnson'),
 
 -- Student Users
-('student_alice', 'alice@university.edu', 'hashed_password_alice', 'student', 'Alice', 'Brown'),
-('student_bob', 'bob@university.edu', 'hashed_password_bob', 'student', 'Bob', 'Davis'),
-('student_charlie', 'charlie@university.edu', 'hashed_password_charlie', 'student', 'Charlie', 'Wilson'),
-('student_diana', 'diana@university.edu', 'hashed_password_diana', 'student', 'Diana', 'Martinez'),
-('student_eve', 'eve@university.edu', 'hashed_password_eve', 'student', 'Eve', 'Garcia');
+('student_alice', 'alice@university.edu', '$2b$10$jkKVC0tqUtYN2BgTIm1i0eMSeFFmzoFK99i9xY39KwWbofomB0oMm', 'student', 'Alice', 'Brown'),
+('student_bob', 'bob@university.edu', '$2b$10$S2awWR.z/uMc0m.Jbn6Yb.aVSC7cBRxZL6LbLEo5q4lFDBXllcYXe', 'student', 'Bob', 'Davis'),
+('student_charlie', 'charlie@university.edu', '$2b$10$FdX3ti3/W17gF6dH8SrCFur4bha2iJphttR2N.ioqp/zci7NVH3Iy', 'student', 'Charlie', 'Wilson'),
+('student_diana', 'diana@university.edu', '$2b$10$CFKt7Sp8pNa0RYgbjRy9lOFE3S9zugZ5eYSGNDQH9YbDQE.RCVU6m', 'student', 'Diana', 'Martinez'),
+('student_eve', 'eve@university.edu', '$2b$10$K.LQEoVPOrDC3JSBZtQN5OqfkoH8lGOTHqCkM4TalR8qGqzBn0gae', 'student', 'Eve', 'Garcia');
 
 -- Insert Sample Students (linked to student users)
 INSERT INTO students (user_id, enrollment_number, date_of_birth, phone_number, address, city, state, postal_code) VALUES

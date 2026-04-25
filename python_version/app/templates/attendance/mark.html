@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block title %}Mark Attendance - Management System{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1 class="h3 mb-0">
+                <i class="fas fa-clipboard-check"></i> Mark Attendance
+            </h1>
+            <p class="text-muted">Record attendance for students</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="/attendance/report" class="btn btn-info">
+                <i class="fas fa-chart-bar"></i> View Reports
+            </a>
+        </div>
+    </div>
+
+    <!-- Date Info Alert -->
+    {% if marked_today %}
+    <div class="alert alert-warning" role="alert">
+        <i class="fas fa-exclamation-triangle"></i>
+        <strong>Attendance already marked for today!</strong> You are editing existing records.
+    </div>
+    {% else %}
+    <div class="alert alert-info" role="alert">
+        <i class="fas fa-info-circle"></i>
+        <strong>Today's Date:</strong> <span id="todayDate"></span>
+    </div>
+    {% endif %}
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-users"></i> Student List
+                <span class="float-end small">Total Students: <strong>{{ students|length }}</strong></span>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <form id="attendanceForm">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width: 5%">#</th>
+                                <th style="width: 25%">Student Name</th>
+                                <th style="width: 20%">Enrollment #</th>
+                                <th style="width: 20%">Email</th>
+                                <th style="width: 15%">Status</th>
+                                <th style="width: 15%">Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for idx, student in enumerate(students, 1) %}
+                            <tr>
+                                <td><small class="text-muted">{{ idx }}</small></td>
+                                <td>
+                                    <strong>{{ student.first_name }} {{ student.last_name }}</strong>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ student.enrollment_number }}</span>
+                                </td>
+                                <td>
+                                    <small>{{ student.email }}</small>
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm status-select" 
+                                            name="attendance[{{ student.student_id }}][status]" required>
+                                        <option value="">Select...</option>
+                                        <option value="present">✓ Present</option>
+                                        <option value="absent">✗ Absent</option>
+                                        <option value="late">⏱ Late</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm" 
+                                           name="attendance[{{ student.student_id }}][remarks]"
+                                           placeholder="Optional notes">
+                                    <input type="hidden" name="attendance[{{ student.student_id }}][student_id]" 
+                                           value="{{ student.student_id }}">
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Status Legend -->
+                <div class="card-footer bg-light">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <small>
+                                <span class="badge bg-success">Present</span> - Student was present
+                            </small>
+                        </div>
+                        <div class="col-md-4">
+                            <small>
+                                <span class="badge bg-danger">Absent</span> - Student was absent
+                            </small>
+                        </div>
+                        <div class="col-md-4">
+                            <small>
+                                <span class="badge bg-warning">Late</span> - Student arrived late
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="card-footer">
+                    <div class="d-flex gap-2 justify-content-between">
+                        <button type="button" class="btn btn-outline-secondary" onclick="resetForm()">
+                            <i class="fas fa-redo"></i> Clear All
+                        </button>
+                        <div>
+                            <a href="/dashboard" class="btn btn-secondary">
+                                <i class="fas fa-times"></i> Cancel
+                            </a>
+                            <button type="submit" class="btn btn-primary" id="submitBtn">
+                                <i class="fas fa-save"></i> Save Attendance
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Progress Alert -->
+    <div id="progressAlert" class="alert mt-3" style="display: none;" role="alert">
+        <div class="spinner-border spinner-border-sm me-2" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <span id="progressText">Processing...</span>
+    </div>
+
+    <!-- Result Alert -->
+    <div id="resultAlert" class="alert mt-3" style="display: none;" role="alert"></div>
+</div>
+
+<script>
+document.getElementById('attendanceForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const submitBtn = document.getElementById('submitBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    
+    // Show progress
+    document.getElementById('progressAlert').style.display = 'block';
+    document.getElementById('resultAlert').style.display = 'none';
+    
+    const attendance = [];
+    const rows = document.querySelectorAll('tbody tr');
+    
+    rows.forEach(row => {
+        const statusSelect = row.querySelector('.status-select');
+        const statusValue = statusSelect.value;
+        
+        if (statusValue) {
+            const studentId = statusSelect.name.match(/attendance\[(\d+)\]/)[1];
+            const remarks = row.querySelector('input[name*="[remarks]"]').value;
+            
+            attendance.push({
+                student_id: parseInt(studentId),
+                status: statusValue,
+                remarks: remarks
+            });
+        }
+    });
+    
+    if (attendance.length === 0) {
+        alert('Please select attendance status for at least one student!');
+        submitBtn.disabled = false;
+        document.getElementById('progressAlert').style.display = 'none';
+        return;
+    }
+    
+    fetch('/attendance/mark', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ attendance: attendance })
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('progressAlert').style.display = 'none';
+        const resultAlert = document.getElementById('resultAlert');
+        
+        if (data.success) {
+            resultAlert.className = 'alert alert-success mt-3';
+            let message = '<strong>✓ Success!</strong> ' + data.message + '<br>';
+            message += '<small>Attendance saved for ' + data.saved_count + ' student(s)</small>';
+            
+            if (data.errors && data.errors.length > 0) {
+                message += '<hr><strong>Warnings:</strong><ul class="mb-0">';
+                data.errors.forEach(error => {
+                    message += '<li>' + error + '</li>';
+                });
+                message += '</ul>';
+            }
+            
+            resultAlert.innerHTML = message;
+            resultAlert.style.display = 'block';
+            
+            setTimeout(() => {
+                window.location.href = '/attendance/report';
+            }, 2000);
+        } else {
+            resultAlert.className = 'alert alert-danger mt-3';
+            resultAlert.innerHTML = '<strong>Error:</strong> ' + data.error;
+            resultAlert.style.display = 'block';
+            
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    })
+    .catch(error => {
+        document.getElementById('progressAlert').style.display = 'none';
+        const resultAlert = document.getElementById('resultAlert');
+        resultAlert.className = 'alert alert-danger mt-3';
+        resultAlert.innerHTML = '<strong>Error:</strong> ' + error;
+        resultAlert.style.display = 'block';
+        
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    });
+});
+
+function resetForm() {
+    if (confirm('Are you sure you want to clear all attendance entries?')) {
+        document.querySelectorAll('.status-select').forEach(select => {
+            select.value = '';
+        });
+        document.querySelectorAll('input[name*="[remarks]"]').forEach(input => {
+            input.value = '';
+        });
+    }
+}
+
+// Display today's date
+document.getElementById('todayDate').textContent = new Date().toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+});
+
+// Quick status selection with keyboard
+document.querySelectorAll('.status-select').forEach((select, index) => {
+    select.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowDown' && index < document.querySelectorAll('.status-select').length - 1) {
+            document.querySelectorAll('.status-select')[index + 1].focus();
+        } else if (e.key === 'ArrowUp' && index > 0) {
+            document.querySelectorAll('.status-select')[index - 1].focus();
+        }
+    });
+});
+</script>
+
+<style>
+    .status-select {
+        min-width: 120px;
+    }
+    .table-responsive {
+        max-height: 600px;
+        overflow-y: auto;
+    }
+    .sticky-top {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+</style>
+{% endblock %}

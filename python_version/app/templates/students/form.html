@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if action == 'add' %}Add Student{% else %}Edit Student{% endif %} - Management System
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            {% if action == 'add' %}
+            <h1 class="h3 mb-0">
+                <i class="fas fa-user-plus"></i> Add New Student
+            </h1>
+            <p class="text-muted">Create a new student account and profile</p>
+            {% else %}
+            <h1 class="h3 mb-0">
+                <i class="fas fa-user-edit"></i> Edit Student
+            </h1>
+            <p class="text-muted">Update student information</p>
+            {% endif %}
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="/students/" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Students
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        {% if action == 'add' %}
+                        <i class="fas fa-file-alt"></i> Student Information
+                        {% else %}
+                        <i class="fas fa-edit"></i> Update Information
+                        {% endif %}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Error Messages -->
+                    <div id="errorContainer"></div>
+
+                    <form id="studentForm" method="POST" novalidate>
+                        <!-- Account Section (only for add) -->
+                        {% if action == 'add' %}
+                        <fieldset class="mb-4">
+                            <legend class="fs-6 fw-bold mb-3">Account Details</legend>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="username" class="form-label">Username <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="username" name="username" 
+                                           value="{{ form.username.data or '' }}" required>
+                                    <div class="form-text">Used for login (3-50 characters)</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="email" class="form-label">Email <span class="text-danger">*</span></label>
+                                    <input type="email" class="form-control" id="email" name="email" 
+                                           value="{{ form.email.data or '' }}" required>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-info" role="alert">
+                                <i class="fas fa-info-circle"></i> 
+                                <strong>Default Password:</strong> The student's enrollment number will be used as the initial password.
+                            </div>
+                        </fieldset>
+                        {% endif %}
+
+                        <!-- Personal Information Section -->
+                        <fieldset class="mb-4">
+                            <legend class="fs-6 fw-bold mb-3">Personal Information</legend>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="first_name" class="form-label">First Name <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="first_name" name="first_name" 
+                                           value="{{ form.first_name.data or student.first_name or '' }}" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="last_name" class="form-label">Last Name <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="last_name" name="last_name" 
+                                           value="{{ form.last_name.data or student.last_name or '' }}" required>
+                                </div>
+                            </div>
+
+                            {% if action == 'add' %}
+                            <div class="mb-3">
+                                <label for="enrollment_number" class="form-label">Enrollment Number <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="enrollment_number" name="enrollment_number" 
+                                       value="{{ form.enrollment_number.data or '' }}" required>
+                                <div class="form-text">Unique identifier (4-20 characters)</div>
+                            </div>
+                            {% endif %}
+
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="date_of_birth" class="form-label">Date of Birth</label>
+                                    <input type="date" class="form-control" id="date_of_birth" name="date_of_birth" 
+                                           value="{% if form.date_of_birth.data %}{{ form.date_of_birth.data.strftime('%Y-%m-%d') }}{% elif student.date_of_birth %}{{ student.date_of_birth.strftime('%Y-%m-%d') }}{% endif %}">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="phone_number" class="form-label">Phone Number</label>
+                                    <input type="tel" class="form-control" id="phone_number" name="phone_number" 
+                                           value="{{ form.phone_number.data or student.phone_number or '' }}"
+                                           placeholder="Minimum 10 digits">
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <!-- Address Section -->
+                        <fieldset class="mb-4">
+                            <legend class="fs-6 fw-bold mb-3">Address Information</legend>
+
+                            <div class="mb-3">
+                                <label for="address" class="form-label">Street Address</label>
+                                <input type="text" class="form-control" id="address" name="address" 
+                                       value="{{ form.address.data or student.address or '' }}">
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="city" class="form-label">City</label>
+                                    <input type="text" class="form-control" id="city" name="city" 
+                                           value="{{ form.city.data or student.city or '' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="state" class="form-label">State</label>
+                                    <input type="text" class="form-control" id="state" name="state" 
+                                           value="{{ form.state.data or student.state or '' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="postal_code" class="form-label">Postal Code</label>
+                                    <input type="text" class="form-control" id="postal_code" name="postal_code" 
+                                           value="{{ form.postal_code.data or student.postal_code or '' }}">
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <!-- Action Buttons -->
+                        <div class="d-flex gap-2 justify-content-between">
+                            <a href="/students/" class="btn btn-secondary">
+                                <i class="fas fa-times"></i> Cancel
+                            </a>
+                            <button type="submit" class="btn btn-primary" id="submitBtn">
+                                <i class="fas fa-save"></i> 
+                                {% if action == 'add' %}Add Student{% else %}Update Student{% endif %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info Card -->
+        <div class="col-md-4">
+            <div class="card shadow-sm border-left border-primary">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">
+                        <i class="fas fa-question-circle"></i> Instructions
+                    </h5>
+                    <div class="list-group list-group-flush">
+                        <div class="list-group-item px-0 py-2">
+                            <strong class="text-primary">Required Fields</strong>
+                            <p class="text-muted small mb-0">Fields marked with * are required</p>
+                        </div>
+                        <div class="list-group-item px-0 py-2">
+                            <strong class="text-primary">Username</strong>
+                            <p class="text-muted small mb-0">Should be unique and memorable</p>
+                        </div>
+                        <div class="list-group-item px-0 py-2">
+                            <strong class="text-primary">Phone Number</strong>
+                            <p class="text-muted small mb-0">Must be at least 10 digits</p>
+                        </div>
+                        {% if action == 'add' %}
+                        <div class="list-group-item px-0 py-2">
+                            <strong class="text-primary">Enrollment Number</strong>
+                            <p class="text-muted small mb-0">Used as initial password</p>
+                        </div>
+                        {% endif %}
+                        <div class="list-group-item px-0 py-2">
+                            <strong class="text-primary">Email</strong>
+                            <p class="text-muted small mb-0">Used for notifications and login recovery</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('studentForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const submitBtn = document.getElementById('submitBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+    
+    const formData = new FormData(this);
+    
+    fetch(window.location.pathname, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            window.location.href = data.redirect;
+        } else {
+            const errorContainer = document.getElementById('errorContainer');
+            let errorHTML = '<div class="alert alert-danger" role="alert"><strong>Error:</strong><ul class="mb-0">';
+            
+            if (Array.isArray(data.errors)) {
+                data.errors.forEach(error => {
+                    errorHTML += '<li>' + error + '</li>';
+                });
+            } else {
+                errorHTML += '<li>' + data.error + '</li>';
+            }
+            
+            errorHTML += '</ul></div>';
+            errorContainer.innerHTML = errorHTML;
+            
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    });
+});
+</script>
+
+<style>
+    .border-left {
+        border-left: 4px solid !important;
+    }
+    fieldset {
+        border: 1px solid #e3e6f0;
+        border-radius: 0.35rem;
+        padding: 1rem;
+    }
+    legend {
+        font-size: 0.95rem !important;
+        padding: 0 0.5rem;
+        margin-left: -0.5rem;
+    }
+</style>
+{% endblock %}

@@ -23,7 +23,7 @@ class Config:
     DB_PORT = os.environ.get('DB_PORT') or 5432
     DB_NAME = os.environ.get('DB_NAME') or 'students_management_db'
     DB_USER = os.environ.get('DB_USER') or 'postgres'
-    DB_PASSWORD = os.environ.get('DB_PASSWORD') or ''
+    DB_PASSWORD = os.environ.get('DB_PASSWORD') or '8611622'
     
     # Database Connection String
     DATABASE_URL = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'

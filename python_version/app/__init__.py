@@ -27,11 +27,13 @@ def create_app(config=None):
     from app.routes.dashboard import dashboard_bp
     from app.routes.students import students_bp
     from app.routes.attendance import attendance_bp
+    from app.routes.reports import reports_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(students_bp)
     app.register_blueprint(attendance_bp)
+    app.register_blueprint(reports_bp)
     
     # Error handlers
     @app.errorhandler(404)

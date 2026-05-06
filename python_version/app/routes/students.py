@@ -298,6 +298,17 @@ def delete_student(student_id):
         db.execute("DELETE FROM students WHERE student_id = %s", (student_id,))
         db.execute("DELETE FROM users WHERE user_id = %s", (student['user_id'],))
         
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': True, 'message': 'Student deleted successfully!'}), 200
+        
+        return redirect(url_for('students.list_students'))
+    
+    except Exception as e:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'error': f'Error deleting student: {str(e)}'}), 500
+        return render_template('error.html', error=f'Error deleting student: {str(e)}'), 500
+        db.execute("DELETE FROM users WHERE user_id = %s", (student['user_id'],))
+        
         return jsonify({'success': True, 'message': 'Student deleted successfully!', 'redirect': '/students/'}), 200
     
     except Exception as e:

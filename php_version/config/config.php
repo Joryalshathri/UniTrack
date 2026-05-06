@@ -6,9 +6,9 @@
 // Database Configuration
 define('DB_HOST', 'localhost');
 define('DB_PORT', 5432);
-define('DB_NAME', 'student_management');
+define('DB_NAME', 'students_management_db');
 define('DB_USER', 'postgres');
-define('DB_PASSWORD', 'postgres');
+define('DB_PASSWORD', '8611622');
 
 // Application Settings
 define('APP_NAME', 'Student Management & Attendance System');

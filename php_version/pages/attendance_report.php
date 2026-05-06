@@ -1,323 +1,308 @@
 <?php
 /**
- * Attendance Report Page
+ * Attendance Report
+ * View and filter attendance records
  */
 
+session_start();
+require_once '../config/config.php';
+require_once '../config/Database.php';
+require_once '../config/Helpers.php';
+
+// Check authentication
 if (!isLoggedIn()) {
-    redirect(BASE_URL . '/pages/login.php');
+    redirect(BASE_URL . '?action=login');
 }
 
-$currentUser = getCurrentUser();
-$attendance = new Attendance();
-$days = isset($_GET['days']) ? (int)$_GET['days'] : 30;
-$status = isset($_GET['status']) ? sanitize($_GET['status']) : null;
+$db = Database::getInstance();
 
-$records = $attendance->getAttendanceRecords($days, null, $status);
-$summary = $attendance->getAttendanceSummary($days);
+// Get filters from query parameters
+$date_from = $_GET['date_from'] ?? date('Y-m-d', strtotime('-30 days'));
+$date_to = $_GET['date_to'] ?? date('Y-m-d');
+$student_id = $_GET['student_id'] ?? '';
+$status = $_GET['status'] ?? '';
+$page = (int)($_GET['page'] ?? 1);
+$per_page = 20;
+$offset = ($page - 1) * $per_page;
+
+// Build dynamic query
+$where_parts = ['DATE(a.attendance_date) >= $1 AND DATE(a.attendance_date) <= $2'];
+$params = [$date_from, $date_to];
+$param_count = 2;
+
+if (!empty($student_id)) {
+    $param_count++;
+    $where_parts[] = "a.student_id = $" . $param_count;
+    $params[] = $student_id;
+}
+
+if (!empty($status)) {
+    $param_count++;
+    $where_parts[] = "a.status = $" . $param_count;
+    $params[] = $status;
+}
+
+$where_clause = implode(' AND ', $where_parts);
+
+// Get total records count
+$count_result = pg_query_params(
+    $db->getConnection(),
+    "SELECT COUNT(*) as total FROM attendance a WHERE {$where_clause}",
+    $params
+);
+$count_row = pg_fetch_assoc($count_result);
+$total_records = (int)$count_row['total'];
+$total_pages = ceil($total_records / $per_page);
+
+// Get attendance records
+$param_count += 2;
+$query = "SELECT a.attendance_id, DATE(a.attendance_date) as date, a.status, a.remarks, a.created_at,
+                 s.enrollment_number, u.first_name, u.last_name
+          FROM attendance a
+          JOIN students s ON a.student_id = s.student_id
+          JOIN users u ON s.user_id = u.user_id
+          WHERE {$where_clause}
+          ORDER BY a.attendance_date DESC, u.first_name, u.last_name
+          LIMIT $" . ($param_count - 1) . " OFFSET $" . $param_count;
+
+$params[] = $per_page;
+$params[] = $offset;
+
+$result = pg_query_params($db->getConnection(), $query, $params);
+$records = [];
+while ($row = pg_fetch_assoc($result)) {
+    $records[] = $row;
+}
+
+// Get all students for filter dropdown
+$students_result = pg_query(
+    $db->getConnection(),
+    'SELECT s.student_id, s.enrollment_number, u.first_name, u.last_name 
+     FROM students s 
+     JOIN users u ON s.user_id = u.user_id 
+     WHERE u.is_active = true
+     ORDER BY u.first_name, u.last_name'
+);
+$students = [];
+while ($row = pg_fetch_assoc($students_result)) {
+    $students[] = $row;
+}
+
+// Calculate statistics
+$stats_result = pg_query_params(
+    $db->getConnection(),
+    "SELECT 
+        SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) as present,
+        SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) as absent,
+        SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) as late
+     FROM attendance a WHERE {$where_clause}",
+    array_slice($params, 0, count($params) - 2)
+);
+
+$stats = pg_fetch_assoc($stats_result);
+$stats_present = (int)($stats['present'] ?? 0);
+$stats_absent = (int)($stats['absent'] ?? 0);
+$stats_late = (int)($stats['late'] ?? 0);
+
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Attendance Report - Student Management System</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body {
-            background-color: #f8f9fa;
-        }
-        .sidebar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-            color: white;
-            position: fixed;
-            left: 0;
-            top: 0;
-            width: 250px;
-            z-index: 1000;
-        }
-        .content {
-            margin-left: 250px;
-            padding: 30px;
-        }
-        .sidebar h4 {
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .sidebar a {
-            color: rgba(255, 255, 255, 0.8);
-            text-decoration: none;
-            display: block;
-            padding: 12px 15px;
-            margin: 5px 0;
-            border-radius: 5px;
-            transition: all 0.3s ease;
-        }
-        .sidebar a:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-        }
-        .sidebar a i {
-            width: 20px;
-            margin-right: 10px;
-        }
-        .user-info {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 30px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .user-info small {
-            display: block;
-            opacity: 0.8;
-            margin-top: 5px;
-        }
-        .logout-btn {
-            margin-top: 50px;
-            border-top: 1px solid rgba(255, 255, 255, 0.2);
-            padding-top: 20px;
-        }
-        .report-card {
-            background: white;
-            border-radius: 8px;
-            padding: 25px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-        }
-        .stat-badge {
-            display: inline-block;
-            padding: 10px 15px;
-            border-radius: 5px;
-            margin: 5px;
-            font-weight: 600;
-        }
-        .stat-badge.success {
-            background-color: #d4edda;
-            color: #155724;
-        }
-        .stat-badge.danger {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-        .stat-badge.warning {
-            background-color: #fff3cd;
-            color: #856404;
-        }
-        .table-card {
-            background: white;
-            border-radius: 8px;
-            padding: 25px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        .table {
-            margin-bottom: 0;
-        }
-        .table thead {
-            background-color: #f8f9fa;
-        }
-        .table th {
-            border: none;
-            font-weight: 600;
-            color: #666;
-            font-size: 12px;
-            text-transform: uppercase;
-        }
-        .table td {
-            border-color: #e9ecef;
-            vertical-align: middle;
-        }
-        .status-present {
-            color: #28a745;
-            font-weight: 600;
-        }
-        .status-absent {
-            color: #dc3545;
-            font-weight: 600;
-        }
-        .status-late {
-            color: #ffc107;
-            font-weight: 600;
-        }
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                position: relative;
-                min-height: auto;
-            }
-            .content {
-                margin-left: 0;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="sidebar">
-        <h4>
-            <i class="fas fa-graduation-cap"></i> SMMS
-        </h4>
+<?php require_once 'templates/header.php'; ?>
 
-        <div class="user-info">
-            <strong><?php echo ucfirst($currentUser['first_name']); ?> <?php echo ucfirst($currentUser['last_name']); ?></strong>
-            <small><?php echo ucfirst($currentUser['role']); ?></small>
-            <small><?php echo $currentUser['email']; ?></small>
-        </div>
-
-        <a href="<?php echo BASE_URL . '/?action=dashboard'; ?>">
-            <i class="fas fa-chart-line"></i> Dashboard
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=students'; ?>">
-            <i class="fas fa-users"></i> Students
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=mark_attendance'; ?>">
-            <i class="fas fa-clipboard-check"></i> Mark Attendance
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=attendance_report'; ?>">
-            <i class="fas fa-file-alt"></i> Attendance Report
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=reports'; ?>">
-            <i class="fas fa-bar-chart"></i> Reports
-        </a>
-
-        <div class="logout-btn">
-            <a href="<?php echo BASE_URL . '/?action=logout'; ?>" class="text-danger">
-                <i class="fas fa-sign-out-alt"></i> Logout
+<div class="main-content">
+    <div class="container-fluid p-4">
+        <!-- Page Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1>Attendance Report</h1>
+                <p class="text-muted">View and filter attendance records</p>
+            </div>
+            <a href="<?php echo BASE_URL; ?>?action=mark_attendance" class="btn btn-primary">
+                <i class="fas fa-clipboard-check"></i> Mark Attendance
             </a>
         </div>
-    </div>
 
-    <div class="content">
+        <!-- Statistics Cards -->
         <div class="row mb-4">
-            <div class="col">
-                <h1 class="mb-0"><i class="fas fa-file-alt"></i> Attendance Report</h1>
+            <div class="col-md-3">
+                <div class="card shadow-sm text-center">
+                    <div class="card-body">
+                        <h3 class="text-success mb-0"><?php echo $stats_present; ?></h3>
+                        <p class="text-muted mb-0">Present</p>
+                    </div>
+                </div>
             </div>
-        </div>
-
-        <!-- Summary Statistics -->
-        <div class="report-card">
-            <h5 class="mb-3">Summary (Last <?php echo $days; ?> Days)</h5>
-            <div>
-                <span class="stat-badge success">
-                    <i class="fas fa-check"></i> Present: <?php echo array_sum(array_column($summary, 'present_days')); ?>
-                </span>
-                <span class="stat-badge danger">
-                    <i class="fas fa-times"></i> Absent: <?php echo array_sum(array_column($summary, 'absent_days')); ?>
-                </span>
-                <span class="stat-badge warning">
-                    <i class="fas fa-clock"></i> Late: <?php echo array_sum(array_column($summary, 'late_days')); ?>
-                </span>
+            <div class="col-md-3">
+                <div class="card shadow-sm text-center">
+                    <div class="card-body">
+                        <h3 class="text-danger mb-0"><?php echo $stats_absent; ?></h3>
+                        <p class="text-muted mb-0">Absent</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card shadow-sm text-center">
+                    <div class="card-body">
+                        <h3 class="text-warning mb-0"><?php echo $stats_late; ?></h3>
+                        <p class="text-muted mb-0">Late</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card shadow-sm text-center">
+                    <div class="card-body">
+                        <h3 class="text-info mb-0"><?php echo $total_records; ?></h3>
+                        <p class="text-muted mb-0">Total Records</p>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Filters -->
-        <div class="report-card">
-            <form method="GET" class="d-flex gap-2">
-                <input type="hidden" name="action" value="attendance_report">
-                <select name="days" class="form-select" style="max-width: 150px;" onchange="this.form.submit()">
-                    <option value="7" <?php echo $days == 7 ? 'selected' : ''; ?>>Last 7 days</option>
-                    <option value="30" <?php echo $days == 30 ? 'selected' : ''; ?>>Last 30 days</option>
-                    <option value="60" <?php echo $days == 60 ? 'selected' : ''; ?>>Last 60 days</option>
-                    <option value="90" <?php echo $days == 90 ? 'selected' : ''; ?>>Last 90 days</option>
-                </select>
-                <select name="status" class="form-select" style="max-width: 150px;" onchange="this.form.submit()">
-                    <option value="">All Status</option>
-                    <option value="present" <?php echo $status == 'present' ? 'selected' : ''; ?>>Present</option>
-                    <option value="absent" <?php echo $status == 'absent' ? 'selected' : ''; ?>>Absent</option>
-                    <option value="late" <?php echo $status == 'late' ? 'selected' : ''; ?>>Late</option>
-                </select>
-            </form>
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-filter"></i> Filters</h5>
+            </div>
+            <div class="card-body">
+                <form method="GET" class="row g-3">
+                    <input type="hidden" name="action" value="attendance_report">
+                    
+                    <div class="col-md-2">
+                        <label for="date_from" class="form-label">From Date:</label>
+                        <input type="date" class="form-control" id="date_from" name="date_from" value="<?php echo $date_from; ?>">
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label for="date_to" class="form-label">To Date:</label>
+                        <input type="date" class="form-control" id="date_to" name="date_to" value="<?php echo $date_to; ?>">
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <label for="student_id" class="form-label">Student:</label>
+                        <select class="form-select" id="student_id" name="student_id">
+                            <option value="">— All Students —</option>
+                            <?php foreach ($students as $s): ?>
+                                <option value="<?php echo $s['student_id']; ?>" 
+                                        <?php echo $s['student_id'] == $student_id ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($s['first_name'] . ' ' . $s['last_name'] . ' (' . $s['enrollment_number'] . ')'); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label for="status" class="form-label">Status:</label>
+                        <select class="form-select" id="status" name="status">
+                            <option value="">— All —</option>
+                            <option value="present" <?php echo $status === 'present' ? 'selected' : ''; ?>>Present</option>
+                            <option value="absent" <?php echo $status === 'absent' ? 'selected' : ''; ?>>Absent</option>
+                            <option value="late" <?php echo $status === 'late' ? 'selected' : ''; ?>>Late</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-3 d-flex align-items-end gap-2">
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-search"></i> Filter
+                        </button>
+                        <a href="<?php echo BASE_URL; ?>?action=attendance_report" class="btn btn-secondary">
+                            <i class="fas fa-times"></i> Reset
+                        </a>
+                    </div>
+                </form>
+            </div>
         </div>
 
         <!-- Records Table -->
-        <div class="table-card">
-            <h5 class="mb-3">Attendance Records</h5>
-            <div class="table-responsive">
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Student Name</th>
-                            <th>Enrollment #</th>
-                            <th>Status</th>
-                            <th>Remarks</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($records)): ?>
-                            <tr>
-                                <td colspan="5" class="text-center py-4 text-muted">
-                                    <i class="fas fa-inbox"></i> No attendance records found
-                                </td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($records as $record): ?>
-                                <tr>
-                                    <td><?php echo date('M d, Y', strtotime($record['attendance_date'])); ?></td>
-                                    <td><?php echo ucfirst($record['first_name']) . ' ' . ucfirst($record['last_name']); ?></td>
-                                    <td><span class="badge bg-secondary"><?php echo $record['enrollment_number']; ?></span></td>
-                                    <td>
-                                        <span class="status-<?php echo strtolower($record['status']); ?>">
-                                            <?php echo ucfirst($record['status']); ?>
-                                        </span>
-                                    </td>
-                                    <td><?php echo $record['remarks'] ?? '-'; ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+        <div class="card shadow-sm">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-list"></i> Attendance Records (<?php echo $total_records; ?> total)</h5>
             </div>
-        </div>
-
-        <!-- Student Summary Table -->
-        <div class="table-card" style="margin-top: 30px;">
-            <h5 class="mb-3">Student Summary</h5>
-            <div class="table-responsive">
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Student Name</th>
-                            <th>Enrollment #</th>
-                            <th>Total Days</th>
-                            <th>Present</th>
-                            <th>Absent</th>
-                            <th>Late</th>
-                            <th>Percentage</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($summary)): ?>
-                            <tr>
-                                <td colspan="7" class="text-center py-4 text-muted">
-                                    <i class="fas fa-inbox"></i> No data available
-                                </td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($summary as $stud): ?>
+            <div class="card-body">
+                <?php if (count($records) > 0): ?>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
                                 <tr>
-                                    <td><?php echo ucfirst($stud['first_name']) . ' ' . ucfirst($stud['last_name']); ?></td>
-                                    <td><span class="badge bg-secondary"><?php echo $stud['enrollment_number']; ?></span></td>
-                                    <td><?php echo $stud['total_days'] ?? 0; ?></td>
-                                    <td class="status-present"><?php echo $stud['present_days'] ?? 0; ?></td>
-                                    <td class="status-absent"><?php echo $stud['absent_days'] ?? 0; ?></td>
-                                    <td class="status-late"><?php echo $stud['late_days'] ?? 0; ?></td>
-                                    <td>
-                                        <span class="badge <?php echo ($stud['attendance_percentage'] ?? 0) >= 80 ? 'bg-success' : (($stud['attendance_percentage'] ?? 0) >= 50 ? 'bg-warning' : 'bg-danger'); ?>">
-                                            <?php echo $stud['attendance_percentage'] ?? 0; ?>%
-                                        </span>
-                                    </td>
+                                    <th>Date</th>
+                                    <th>Student</th>
+                                    <th>Enrollment</th>
+                                    <th>Status</th>
+                                    <th>Remarks</th>
+                                    <th>Recorded</th>
                                 </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($records as $record): ?>
+                                    <tr>
+                                        <td><strong><?php echo date('M d, Y', strtotime($record['date'])); ?></strong></td>
+                                        <td><?php echo htmlspecialchars($record['first_name'] . ' ' . $record['last_name']); ?></td>
+                                        <td><?php echo htmlspecialchars($record['enrollment_number']); ?></td>
+                                        <td>
+                                            <?php 
+                                                $status_class = [
+                                                    'present' => 'success',
+                                                    'absent' => 'danger',
+                                                    'late' => 'warning'
+                                                ][$record['status']] ?? 'secondary';
+                                            ?>
+                                            <span class="badge bg-<?php echo $status_class; ?>">
+                                                <?php echo ucfirst($record['status']); ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <?php echo !empty($record['remarks']) ? htmlspecialchars($record['remarks']) : '<span class="text-muted">—</span>'; ?>
+                                        </td>
+                                        <td>
+                                            <small class="text-muted"><?php echo date('M d, Y H:i', strtotime($record['created_at'])); ?></small>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    <?php if ($total_pages > 1): ?>
+                        <nav class="mt-4">
+                            <ul class="pagination justify-content-center">
+                                <?php if ($page > 1): ?>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo BASE_URL; ?>?action=attendance_report&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&student_id=<?php echo urlencode($student_id); ?>&status=<?php echo urlencode($status); ?>&page=1">
+                                            First
+                                        </a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo BASE_URL; ?>?action=attendance_report&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&student_id=<?php echo urlencode($student_id); ?>&status=<?php echo urlencode($status); ?>&page=<?php echo $page - 1; ?>">
+                                            Previous
+                                        </a>
+                                    </li>
+                                <?php endif; ?>
+
+                                <li class="page-item active">
+                                    <span class="page-link">Page <?php echo $page; ?> of <?php echo $total_pages; ?></span>
+                                </li>
+
+                                <?php if ($page < $total_pages): ?>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo BASE_URL; ?>?action=attendance_report&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&student_id=<?php echo urlencode($student_id); ?>&status=<?php echo urlencode($status); ?>&page=<?php echo $page + 1; ?>">
+                                            Next
+                                        </a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo BASE_URL; ?>?action=attendance_report&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&student_id=<?php echo urlencode($student_id); ?>&status=<?php echo urlencode($status); ?>&page=<?php echo $total_pages; ?>">
+                                            Last
+                                        </a>
+                                    </li>
+                                <?php endif; ?>
+                            </ul>
+                        </nav>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <div class="alert alert-info mb-0">
+                        <i class="fas fa-info-circle"></i> No attendance records found for the selected criteria.
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+<?php require_once 'templates/footer.php'; ?>

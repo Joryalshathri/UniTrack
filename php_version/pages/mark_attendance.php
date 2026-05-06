@@ -1,258 +1,202 @@
 <?php
 /**
- * Mark Attendance Page
+ * Mark Attendance
+ * Interface to mark attendance for multiple students
  */
 
+session_start();
+require_once '../config/config.php';
+require_once '../config/Database.php';
+require_once '../config/Helpers.php';
+
+// Check authentication
 if (!isLoggedIn()) {
-    redirect(BASE_URL . '/pages/login.php');
+    redirect(BASE_URL . '?action=login');
 }
 
-$currentUser = getCurrentUser();
-$attendance = new Attendance();
-$students = $attendance->getActiveStudents();
-$error = null;
-$success = null;
+$db = Database::getInstance();
+$date_filter = $_GET['date'] ?? date('Y-m-d');
+$error = '';
+$success = '';
+
+// Fetch all active students
+$students_result = pg_query(
+    $db->getConnection(),
+    'SELECT s.student_id, s.enrollment_number, u.first_name, u.last_name 
+     FROM students s 
+     JOIN users u ON s.user_id = u.user_id 
+     WHERE u.is_active = true
+     ORDER BY u.first_name, u.last_name'
+);
+
+$students = [];
+while ($row = pg_fetch_assoc($students_result)) {
+    $students[] = $row;
+}
+
+// Fetch existing attendance for the date
+$existing_result = pg_query_params(
+    $db->getConnection(),
+    'SELECT student_id, status, remarks FROM attendance WHERE DATE(attendance_date) = $1',
+    [$date_filter]
+);
+
+$existing_attendance = [];
+while ($row = pg_fetch_assoc($existing_result)) {
+    $existing_attendance[$row['student_id']] = $row;
+}
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $records = [];
-    foreach ($_POST['attendance'] as $student_id => $status) {
-        if ($status) {
-            $records[] = [
-                'student_id' => (int)$student_id,
-                'status' => $status,
-                'remarks' => sanitize($_POST['remarks'][$student_id] ?? '')
-            ];
-        }
-    }
-
-    if (!empty($records)) {
-        $result = $attendance->markAttendance($records);
-        if ($result['success']) {
-            $success = $result['saved_count'] . ' attendance records marked successfully';
-        } else {
-            $error = $result['error'];
-        }
-    } else {
+    $attendance_data = $_POST['attendance'] ?? [];
+    
+    if (empty($attendance_data)) {
         $error = 'Please mark attendance for at least one student';
+    } else {
+        try {
+            $count = 0;
+            foreach ($attendance_data as $student_id => $data) {
+                $status = $data['status'] ?? null;
+                $remarks = trim($data['remarks'] ?? '');
+                
+                if (empty($status)) {
+                    continue;
+                }
+                
+                // Check if attendance already exists for this date
+                $check = pg_query_params(
+                    $db->getConnection(),
+                    'SELECT attendance_id FROM attendance WHERE student_id = $1 AND DATE(attendance_date) = $2',
+                    [$student_id, $date_filter]
+                );
+                
+                if (pg_num_rows($check) > 0) {
+                    // Update existing record
+                    pg_query_params(
+                        $db->getConnection(),
+                        'UPDATE attendance SET status = $1, remarks = $2, created_at = NOW() 
+                         WHERE student_id = $3 AND DATE(attendance_date) = $4',
+                        [$status, $remarks, $student_id, $date_filter]
+                    );
+                } else {
+                    // Insert new record
+                    pg_query_params(
+                        $db->getConnection(),
+                        'INSERT INTO attendance (student_id, attendance_date, status, remarks) 
+                         VALUES ($1, $2, $3, $4)',
+                        [$student_id, $date_filter, $status, $remarks]
+                    );
+                }
+                
+                $count++;
+            }
+            
+            $success = "Attendance marked for {$count} student" . ($count !== 1 ? 's' : '') . '!';
+            // Refresh existing attendance
+            $existing_result = pg_query_params(
+                $db->getConnection(),
+                'SELECT student_id, status, remarks FROM attendance WHERE DATE(attendance_date) = $1',
+                [$date_filter]
+            );
+            
+            $existing_attendance = [];
+            while ($row = pg_fetch_assoc($existing_result)) {
+                $existing_attendance[$row['student_id']] = $row;
+            }
+            
+        } catch (Exception $e) {
+            $error = 'Error saving attendance: ' . $e->getMessage();
+        }
     }
 }
+
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mark Attendance - Student Management System</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body {
-            background-color: #f8f9fa;
-        }
-        .sidebar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-            color: white;
-            position: fixed;
-            left: 0;
-            top: 0;
-            width: 250px;
-            z-index: 1000;
-        }
-        .content {
-            margin-left: 250px;
-            padding: 30px;
-        }
-        .sidebar h4 {
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .sidebar a {
-            color: rgba(255, 255, 255, 0.8);
-            text-decoration: none;
-            display: block;
-            padding: 12px 15px;
-            margin: 5px 0;
-            border-radius: 5px;
-            transition: all 0.3s ease;
-        }
-        .sidebar a:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-        }
-        .sidebar a i {
-            width: 20px;
-            margin-right: 10px;
-        }
-        .user-info {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 30px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .user-info small {
-            display: block;
-            opacity: 0.8;
-            margin-top: 5px;
-        }
-        .logout-btn {
-            margin-top: 50px;
-            border-top: 1px solid rgba(255, 255, 255, 0.2);
-            padding-top: 20px;
-        }
-        .attendance-card {
-            background: white;
-            border-radius: 8px;
-            padding: 25px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        .attendance-table {
-            margin-top: 20px;
-        }
-        .attendance-table table {
-            margin-bottom: 0;
-        }
-        .attendance-table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            color: #666;
-            font-size: 12px;
-            text-transform: uppercase;
-            border: none;
-        }
-        .attendance-table td {
-            vertical-align: middle;
-            border-color: #e9ecef;
-        }
-        .status-select {
-            border: 1px solid #ddd;
-            padding: 8px 12px;
-            border-radius: 4px;
-        }
-        .remarks-input {
-            border: 1px solid #ddd;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            width: 100%;
-        }
-        .select-all-box {
-            margin-bottom: 15px;
-        }
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                position: relative;
-                min-height: auto;
-            }
-            .content {
-                margin-left: 0;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="sidebar">
-        <h4>
-            <i class="fas fa-graduation-cap"></i> SMMS
-        </h4>
+<?php require_once 'templates/header.php'; ?>
 
-        <div class="user-info">
-            <strong><?php echo ucfirst($currentUser['first_name']); ?> <?php echo ucfirst($currentUser['last_name']); ?></strong>
-            <small><?php echo ucfirst($currentUser['role']); ?></small>
-            <small><?php echo $currentUser['email']; ?></small>
-        </div>
-
-        <a href="<?php echo BASE_URL . '/?action=dashboard'; ?>">
-            <i class="fas fa-chart-line"></i> Dashboard
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=students'; ?>">
-            <i class="fas fa-users"></i> Students
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=mark_attendance'; ?>">
-            <i class="fas fa-clipboard-check"></i> Mark Attendance
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=attendance_report'; ?>">
-            <i class="fas fa-file-alt"></i> Attendance Report
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=reports'; ?>">
-            <i class="fas fa-bar-chart"></i> Reports
-        </a>
-
-        <div class="logout-btn">
-            <a href="<?php echo BASE_URL . '/?action=logout'; ?>" class="text-danger">
-                <i class="fas fa-sign-out-alt"></i> Logout
+<div class="main-content">
+    <div class="container-fluid p-4">
+        <!-- Page Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1>Mark Attendance</h1>
+                <p class="text-muted">Record student attendance for a specific date</p>
+            </div>
+            <a href="<?php echo BASE_URL; ?>?action=attendance_report" class="btn btn-info">
+                <i class="fas fa-list"></i> View Report
             </a>
         </div>
-    </div>
 
-    <div class="content">
-        <div class="row mb-4">
-            <div class="col">
-                <h1 class="mb-0">
-                    <i class="fas fa-clipboard-check"></i> Mark Attendance
-                </h1>
-                <p class="text-muted">Date: <?php echo date('F d, Y'); ?></p>
-            </div>
-        </div>
-
-        <?php if ($success): ?>
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                <i class="fas fa-check-circle"></i> <?php echo $success; ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-        <?php endif; ?>
-
-        <?php if ($error): ?>
+        <!-- Error/Success Messages -->
+        <?php if (!empty($error)): ?>
             <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
+                <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error); ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         <?php endif; ?>
 
-        <div class="attendance-card">
-            <form method="POST">
-                <div class="select-all-box">
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="selectAll" onchange="toggleSelectAll()">
-                        <label class="form-check-label" for="selectAll">
-                            Mark All as Present
-                        </label>
-                    </div>
-                </div>
+        <?php if (!empty($success)): ?>
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($success); ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        <?php endif; ?>
 
-                <div class="attendance-table">
+        <!-- Attendance Form -->
+        <form method="POST" class="needs-validation" novalidate>
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-calendar"></i> Attendance for <?php echo date('M d, Y', strtotime($date_filter)); ?></h5>
+                </div>
+                <div class="card-body">
+                    <!-- Date Filter -->
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <label for="date_filter" class="form-label">Select Date:</label>
+                            <input type="date" id="date_filter" class="form-control" value="<?php echo $date_filter; ?>" 
+                                   onchange="window.location = window.location.href.split('?')[0] + '?action=mark_attendance&date=' + this.value;">
+                        </div>
+                    </div>
+
+                    <!-- Students Table -->
                     <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
+                        <table class="table table-hover">
+                            <thead class="table-light">
                                 <tr>
-                                    <th>#</th>
-                                    <th>Student Name</th>
-                                    <th>Enrollment #</th>
-                                    <th>Status</th>
-                                    <th>Remarks</th>
+                                    <th style="width: 5%">#</th>
+                                    <th style="width: 15%">Enrollment</th>
+                                    <th style="width: 30%">Name</th>
+                                    <th style="width: 20%">Status</th>
+                                    <th style="width: 30%">Remarks</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php $index = 1; foreach ($students as $student): ?>
+                                <?php 
+                                foreach ($students as $index => $student):
+                                    $existing = $existing_attendance[$student['student_id']] ?? null;
+                                    $status = $existing['status'] ?? '';
+                                    $remarks = $existing['remarks'] ?? '';
+                                ?>
                                     <tr>
-                                        <td><?php echo $index++; ?></td>
-                                        <td><?php echo ucfirst($student['first_name']) . ' ' . ucfirst($student['last_name']); ?></td>
-                                        <td><span class="badge bg-secondary"><?php echo $student['enrollment_number']; ?></span></td>
+                                        <td><?php echo $index + 1; ?></td>
                                         <td>
-                                            <select name="attendance[<?php echo $student['student_id']; ?>]" class="status-select attendance-status">
-                                                <option value="">-- Select --</option>
-                                                <option value="present">Present</option>
-                                                <option value="absent">Absent</option>
-                                                <option value="late">Late</option>
+                                            <strong><?php echo htmlspecialchars($student['enrollment_number']); ?></strong>
+                                        </td>
+                                        <td>
+                                            <?php echo htmlspecialchars($student['first_name'] . ' ' . $student['last_name']); ?>
+                                        </td>
+                                        <td>
+                                            <select name="attendance[<?php echo $student['student_id']; ?>][status]" 
+                                                    class="form-select form-select-sm" aria-label="Attendance status">
+                                                <option value="">— Select —</option>
+                                                <option value="present" <?php echo $status === 'present' ? 'selected' : ''; ?>>Present</option>
+                                                <option value="absent" <?php echo $status === 'absent' ? 'selected' : ''; ?>>Absent</option>
+                                                <option value="late" <?php echo $status === 'late' ? 'selected' : ''; ?>>Late</option>
                                             </select>
                                         </td>
                                         <td>
-                                            <input type="text" name="remarks[<?php echo $student['student_id']; ?>]" class="remarks-input" placeholder="Add remarks (optional)">
+                                            <input type="text" name="attendance[<?php echo $student['student_id']; ?>][remarks]" 
+                                                   class="form-control form-control-sm" placeholder="Reason or notes..."
+                                                   value="<?php echo htmlspecialchars($remarks); ?>">
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -260,28 +204,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </table>
                     </div>
                 </div>
+            </div>
 
-                <div class="d-flex gap-2 mt-4">
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-save"></i> Save Attendance
-                    </button>
-                    <a href="<?php echo BASE_URL . '/?action=dashboard'; ?>" class="btn btn-secondary">
-                        <i class="fas fa-times"></i> Cancel
-                    </a>
+            <!-- Form Actions -->
+            <div class="d-flex gap-2 justify-content-end">
+                <a href="<?php echo BASE_URL; ?>?action=dashboard" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> Cancel
+                </a>
+                <button type="submit" class="btn btn-success btn-lg">
+                    <i class="fas fa-save"></i> Save Attendance
+                </button>
+            </div>
+        </form>
+
+        <!-- Summary Card -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-info text-white">
+                        <h6 class="mb-0"><i class="fas fa-info-circle"></i> Summary</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted mb-0">
+                            <small>Total Active Students: <strong><?php echo count($students); ?></strong></small>
+                        </p>
+                    </div>
                 </div>
-            </form>
+            </div>
         </div>
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        function toggleSelectAll() {
-            const selectAll = document.getElementById('selectAll').checked;
-            const selects = document.querySelectorAll('.attendance-status');
-            selects.forEach(select => {
-                select.value = selectAll ? 'present' : '';
-            });
+<script>
+// Bootstrap form validation
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('.needs-validation');
+    form.addEventListener('submit', function(event) {
+        if (!form.checkValidity()) {
+            event.preventDefault();
+            event.stopPropagation();
         }
-    </script>
-</body>
-</html>
+        form.classList.add('was-validated');
+    }, false);
+});
+</script>
+
+<?php require_once 'templates/footer.php'; ?>

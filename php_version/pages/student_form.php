@@ -1,306 +1,334 @@
 <?php
 /**
- * Student Form Page (Add/Edit)
+ * Student Form - Add/Edit Student
+ * Handles both adding new students and editing existing student information
  */
 
+session_start();
+require_once '../config/config.php';
+require_once '../config/Database.php';
+require_once '../config/Helpers.php';
+
+// Check authentication
 if (!isLoggedIn()) {
-    redirect(BASE_URL . '/pages/login.php');
+    redirect(BASE_URL . '?action=login');
 }
 
-$currentUser = getCurrentUser();
-$edit_mode = false;
-$student = [
-    'student_id' => '',
-    'first_name' => '',
-    'last_name' => '',
-    'email' => '',
-    'username' => '',
-    'enrollment_number' => '',
-    'date_of_birth' => '',
-    'phone_number' => '',
-    'address' => '',
-    'city' => '',
-    'state' => '',
-    'postal_code' => ''
-];
+$db = Database::getInstance();
+$student_id = $_GET['id'] ?? null;
+$mode = $student_id ? 'edit' : 'add';
+$error = '';
+$success = '';
 
-if (isset($_GET['id'])) {
-    $edit_mode = true;
-    $student_id = (int)$_GET['id'];
-    $studentObj = new Student();
-    $studentData = $studentObj->getStudentById($student_id);
-    if ($studentData) {
-        $student = $studentData;
+// Fetch student data for edit mode
+$student = null;
+$user = null;
+if ($mode === 'edit' && $student_id) {
+    $result = pg_query_params(
+        $db->getConnection(),
+        'SELECT s.*, u.first_name, u.last_name, u.email, u.phone, u.is_active 
+         FROM students s 
+         JOIN users u ON s.user_id = u.user_id 
+         WHERE s.student_id = $1',
+        [$student_id]
+    );
+    
+    if (pg_num_rows($result) > 0) {
+        $student = pg_fetch_assoc($result);
+    } else {
+        $error = 'Student not found';
     }
 }
 
-// Handle form submission
+// Process form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $data = [
-        'first_name' => sanitize($_POST['first_name'] ?? ''),
-        'last_name' => sanitize($_POST['last_name'] ?? ''),
-        'email' => sanitize($_POST['email'] ?? ''),
-        'username' => sanitize($_POST['username'] ?? ''),
-        'enrollment_number' => sanitize($_POST['enrollment_number'] ?? ''),
-        'date_of_birth' => $_POST['date_of_birth'] ?? '',
-        'phone_number' => sanitize($_POST['phone_number'] ?? ''),
-        'address' => sanitize($_POST['address'] ?? ''),
-        'city' => sanitize($_POST['city'] ?? ''),
-        'state' => sanitize($_POST['state'] ?? ''),
-        'postal_code' => sanitize($_POST['postal_code'] ?? '')
-    ];
-
-    $studentObj = new Student();
-    if ($edit_mode) {
-        $result = $studentObj->updateStudent($student['student_id'], $data);
-    } else {
-        $result = $studentObj->addStudent($data);
+    $first_name = trim($_POST['first_name'] ?? '');
+    $last_name = trim($_POST['last_name'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $phone = trim($_POST['phone'] ?? '');
+    $enrollment_number = trim($_POST['enrollment_number'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+    $city = trim($_POST['city'] ?? '');
+    $state = trim($_POST['state'] ?? '');
+    $postal_code = trim($_POST['postal_code'] ?? '');
+    
+    // Validation
+    if (empty($first_name)) {
+        $error = 'First name is required';
+    } elseif (empty($last_name)) {
+        $error = 'Last name is required';
+    } elseif (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = 'Valid email is required';
+    } elseif (empty($enrollment_number)) {
+        $error = 'Enrollment number is required';
+    } elseif (empty($phone) || !preg_match('/^\+?[\d\s\-\(\)]{10,}$/', $phone)) {
+        $error = 'Valid phone number is required';
+    } elseif ($mode === 'add') {
+        // Check if enrollment number already exists
+        $check = pg_query_params(
+            $db->getConnection(),
+            'SELECT enrollment_number FROM students WHERE enrollment_number = $1',
+            [$enrollment_number]
+        );
+        
+        if (pg_num_rows($check) > 0) {
+            $error = 'Enrollment number already exists';
+        }
     }
-
-    if ($result['success']) {
-        redirect(BASE_URL . '/?action=students&success=' . urlencode($edit_mode ? 'Student updated' : 'Student added'));
-    } else {
-        $error = $result['error'] ?? 'An error occurred';
+    
+    if (empty($error)) {
+        try {
+            if ($mode === 'add') {
+                // Create new user account
+                $password = $enrollment_number; // Auto-generate from enrollment number
+                $password_hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 10]);
+                
+                $user_result = pg_query_params(
+                    $db->getConnection(),
+                    'INSERT INTO users (username, password_hash, role, first_name, last_name, email, phone, is_active) 
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING user_id',
+                    [$enrollment_number, $password_hash, 'student', $first_name, $last_name, $email, $phone, true]
+                );
+                
+                if (pg_num_rows($user_result) > 0) {
+                    $user_id = pg_fetch_assoc($user_result)['user_id'];
+                    
+                    // Insert student record
+                    pg_query_params(
+                        $db->getConnection(),
+                        'INSERT INTO students (user_id, enrollment_number, address, city, state, postal_code) 
+                         VALUES ($1, $2, $3, $4, $5, $6)',
+                        [$user_id, $enrollment_number, $address, $city, $state, $postal_code]
+                    );
+                    
+                    $success = "Student '{$first_name} {$last_name}' added successfully!";
+                    // Redirect after 2 seconds
+                    header('Refresh: 2; url=' . BASE_URL . '?action=students_list');
+                } else {
+                    $error = 'Failed to create user account';
+                }
+                
+            } else {
+                // Update existing student
+                pg_query_params(
+                    $db->getConnection(),
+                    'UPDATE users SET first_name = $1, last_name = $2, email = $3, phone = $4, is_active = $5 
+                     WHERE user_id = $6',
+                    [$first_name, $last_name, $email, $phone, true, $student['user_id']]
+                );
+                
+                pg_query_params(
+                    $db->getConnection(),
+                    'UPDATE students SET address = $1, city = $2, state = $3, postal_code = $4 
+                     WHERE student_id = $5',
+                    [$address, $city, $state, $postal_code, $student_id]
+                );
+                
+                $success = "Student information updated successfully!";
+                // Redirect after 2 seconds
+                header('Refresh: 2; url=' . BASE_URL . '?action=student_detail&id=' . $student_id);
+            }
+            
+        } catch (Exception $e) {
+            $error = 'Database error: ' . $e->getMessage();
+        }
     }
 }
 
-$error = isset($error) ? $error : null;
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $edit_mode ? 'Edit Student' : 'Add Student'; ?> - Student Management System</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body {
-            background-color: #f8f9fa;
-        }
-        .sidebar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-            color: white;
-            position: fixed;
-            left: 0;
-            top: 0;
-            width: 250px;
-            z-index: 1000;
-        }
-        .content {
-            margin-left: 250px;
-            padding: 30px;
-        }
-        .sidebar h4 {
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .sidebar a {
-            color: rgba(255, 255, 255, 0.8);
-            text-decoration: none;
-            display: block;
-            padding: 12px 15px;
-            margin: 5px 0;
-            border-radius: 5px;
-            transition: all 0.3s ease;
-        }
-        .sidebar a:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-        }
-        .sidebar a i {
-            width: 20px;
-            margin-right: 10px;
-        }
-        .user-info {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 30px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .user-info small {
-            display: block;
-            opacity: 0.8;
-            margin-top: 5px;
-        }
-        .logout-btn {
-            margin-top: 50px;
-            border-top: 1px solid rgba(255, 255, 255, 0.2);
-            padding-top: 20px;
-        }
-        .form-card {
-            background: white;
-            border-radius: 8px;
-            padding: 25px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        .form-section-title {
-            font-weight: 600;
-            color: #333;
-            margin-top: 20px;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #667eea;
-        }
-        .form-label {
-            font-weight: 600;
-            color: #555;
-            margin-bottom: 8px;
-        }
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                position: relative;
-                min-height: auto;
-            }
-            .content {
-                margin-left: 0;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="sidebar">
-        <h4>
-            <i class="fas fa-graduation-cap"></i> SMMS
-        </h4>
+<?php require_once 'templates/header.php'; ?>
 
-        <div class="user-info">
-            <strong><?php echo ucfirst($currentUser['first_name']); ?> <?php echo ucfirst($currentUser['last_name']); ?></strong>
-            <small><?php echo ucfirst($currentUser['role']); ?></small>
-            <small><?php echo $currentUser['email']; ?></small>
-        </div>
-
-        <a href="<?php echo BASE_URL . '/?action=dashboard'; ?>">
-            <i class="fas fa-chart-line"></i> Dashboard
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=students'; ?>">
-            <i class="fas fa-users"></i> Students
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=mark_attendance'; ?>">
-            <i class="fas fa-clipboard-check"></i> Mark Attendance
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=attendance_report'; ?>">
-            <i class="fas fa-file-alt"></i> Attendance Report
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=reports'; ?>">
-            <i class="fas fa-bar-chart"></i> Reports
-        </a>
-
-        <div class="logout-btn">
-            <a href="<?php echo BASE_URL . '/?action=logout'; ?>" class="text-danger">
-                <i class="fas fa-sign-out-alt"></i> Logout
+<div class="main-content">
+    <div class="container-fluid p-4">
+        <!-- Page Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1><?php echo $mode === 'add' ? 'Add New Student' : 'Edit Student'; ?></h1>
+                <p class="text-muted">Fill in the student information below</p>
+            </div>
+            <a href="<?php echo BASE_URL; ?>?action=students_list" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back
             </a>
         </div>
-    </div>
 
-    <div class="content">
-        <div class="row mb-4">
-            <div class="col">
-                <h1 class="mb-0">
-                    <i class="fas fa-<?php echo $edit_mode ? 'edit' : 'plus'; ?>"></i>
-                    <?php echo $edit_mode ? 'Edit Student' : 'Add New Student'; ?>
-                </h1>
+        <!-- Error/Success Messages -->
+        <?php if (!empty($error)): ?>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error); ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!empty($success)): ?>
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($success); ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        <?php endif; ?>
+
+        <!-- Form Card -->
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-<?php echo $mode === 'add' ? 'plus-circle' : 'edit'; ?>"></i>
+                            <?php echo $mode === 'add' ? 'New Student Information' : 'Update Student Information'; ?>
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" class="needs-validation" novalidate>
+                            <!-- Personal Information Section -->
+                            <div class="mb-4">
+                                <h6 class="text-uppercase text-muted mb-3">Personal Information</h6>
+                                
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="first_name" class="form-label">First Name *</label>
+                                        <input type="text" class="form-control" id="first_name" name="first_name" 
+                                               value="<?php echo htmlspecialchars($student['first_name'] ?? ''); ?>" 
+                                               required>
+                                        <div class="invalid-feedback">First name is required</div>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label for="last_name" class="form-label">Last Name *</label>
+                                        <input type="text" class="form-control" id="last_name" name="last_name" 
+                                               value="<?php echo htmlspecialchars($student['last_name'] ?? ''); ?>" 
+                                               required>
+                                        <div class="invalid-feedback">Last name is required</div>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="enrollment_number" class="form-label">Enrollment Number *</label>
+                                        <input type="text" class="form-control" id="enrollment_number" name="enrollment_number" 
+                                               value="<?php echo htmlspecialchars($student['enrollment_number'] ?? ''); ?>" 
+                                               <?php echo $mode === 'edit' ? 'disabled' : ''; ?> required>
+                                        <small class="text-muted">
+                                            <?php echo $mode === 'add' ? '(Used to generate initial password)' : '(Cannot be changed)'; ?>
+                                        </small>
+                                        <div class="invalid-feedback">Enrollment number is required</div>
+                                    </div>
+                                    
+                                    <div class="col-md-6 mb-3">
+                                        <label for="email" class="form-label">Email *</label>
+                                        <input type="email" class="form-control" id="email" name="email" 
+                                               value="<?php echo htmlspecialchars($student['email'] ?? ''); ?>" 
+                                               required>
+                                        <div class="invalid-feedback">Valid email is required</div>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="phone" class="form-label">Phone Number *</label>
+                                    <input type="tel" class="form-control" id="phone" name="phone" 
+                                           value="<?php echo htmlspecialchars($student['phone'] ?? ''); ?>" 
+                                           placeholder="+1 (555) 000-0000" required>
+                                    <div class="invalid-feedback">Valid phone number is required</div>
+                                </div>
+                            </div>
+
+                            <!-- Address Information Section -->
+                            <div class="mb-4">
+                                <h6 class="text-uppercase text-muted mb-3">Address Information</h6>
+                                
+                                <div class="mb-3">
+                                    <label for="address" class="form-label">Address</label>
+                                    <input type="text" class="form-control" id="address" name="address" 
+                                           value="<?php echo htmlspecialchars($student['address'] ?? ''); ?>" 
+                                           placeholder="Street address">
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label for="city" class="form-label">City</label>
+                                        <input type="text" class="form-control" id="city" name="city" 
+                                               value="<?php echo htmlspecialchars($student['city'] ?? ''); ?>">
+                                    </div>
+                                    
+                                    <div class="col-md-4 mb-3">
+                                        <label for="state" class="form-label">State/Province</label>
+                                        <input type="text" class="form-control" id="state" name="state" 
+                                               value="<?php echo htmlspecialchars($student['state'] ?? ''); ?>">
+                                    </div>
+                                    
+                                    <div class="col-md-4 mb-3">
+                                        <label for="postal_code" class="form-label">Postal Code</label>
+                                        <input type="text" class="form-control" id="postal_code" name="postal_code" 
+                                               value="<?php echo htmlspecialchars($student['postal_code'] ?? ''); ?>">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Form Actions -->
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <a href="<?php echo BASE_URL; ?>?action=students_list" class="btn btn-secondary">
+                                    <i class="fas fa-times"></i> Cancel
+                                </a>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save"></i> 
+                                    <?php echo $mode === 'add' ? 'Add Student' : 'Update Student'; ?>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Information Panel -->
+            <div class="col-md-4">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="fas fa-info-circle"></i> Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <?php if ($mode === 'add'): ?>
+                            <p><strong>Adding New Student</strong></p>
+                            <ul class="small">
+                                <li>Fill in all required fields marked with *</li>
+                                <li>Initial password will be the enrollment number</li>
+                                <li>Student can change password after first login</li>
+                                <li>Email must be unique and valid</li>
+                                <li>Phone number should include country/area code</li>
+                            </ul>
+                        <?php else: ?>
+                            <p><strong>Editing Student</strong></p>
+                            <ul class="small">
+                                <li>Enrollment number cannot be changed</li>
+                                <li>Update any information as needed</li>
+                                <li>Changes are saved immediately</li>
+                                <li>To change password, use admin panel</li>
+                            </ul>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Required Fields Legend -->
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <p class="text-muted mb-2"><small><strong>Field Legend:</strong></small></p>
+                        <p class="text-muted"><small><span class="text-danger">*</span> = Required field</small></p>
+                    </div>
+                </div>
             </div>
         </div>
-
-        <div class="form-card">
-            <?php if ($error): ?>
-                <div class="alert alert-danger" role="alert">
-                    <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
-                </div>
-            <?php endif; ?>
-
-            <form method="POST">
-                <!-- Personal Information -->
-                <h5 class="form-section-title"><i class="fas fa-user"></i> Personal Information</h5>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">First Name *</label>
-                        <input type="text" class="form-control" name="first_name" value="<?php echo $student['first_name']; ?>" required>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Last Name *</label>
-                        <input type="text" class="form-control" name="last_name" value="<?php echo $student['last_name']; ?>" required>
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Email *</label>
-                        <input type="email" class="form-control" name="email" value="<?php echo $student['email']; ?>" required>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Phone Number</label>
-                        <input type="tel" class="form-control" name="phone_number" value="<?php echo $student['phone_number']; ?>">
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Date of Birth</label>
-                        <input type="date" class="form-control" name="date_of_birth" value="<?php echo $student['date_of_birth']; ?>">
-                    </div>
-                </div>
-
-                <!-- Account Information -->
-                <h5 class="form-section-title"><i class="fas fa-lock"></i> Account Information</h5>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Username <?php echo !$edit_mode ? '*' : ''; ?></label>
-                        <input type="text" class="form-control" name="username" value="<?php echo $student['username']; ?>" <?php echo !$edit_mode ? 'required' : 'disabled'; ?>>
-                        <?php if ($edit_mode): ?>
-                            <small class="text-muted">Username cannot be changed</small>
-                        <?php endif; ?>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Enrollment Number <?php echo !$edit_mode ? '*' : ''; ?></label>
-                        <input type="text" class="form-control" name="enrollment_number" value="<?php echo $student['enrollment_number']; ?>" <?php echo !$edit_mode ? 'required' : 'disabled'; ?>>
-                        <?php if ($edit_mode): ?>
-                            <small class="text-muted">Enrollment number cannot be changed</small>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <!-- Address Information -->
-                <h5 class="form-section-title"><i class="fas fa-map-marker-alt"></i> Address</h5>
-                <div class="mb-3">
-                    <label class="form-label">Address</label>
-                    <input type="text" class="form-control" name="address" value="<?php echo $student['address']; ?>">
-                </div>
-
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">City</label>
-                        <input type="text" class="form-control" name="city" value="<?php echo $student['city']; ?>">
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">State/Province</label>
-                        <input type="text" class="form-control" name="state" value="<?php echo $student['state']; ?>">
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Postal Code</label>
-                        <input type="text" class="form-control" name="postal_code" value="<?php echo $student['postal_code']; ?>">
-                    </div>
-                </div>
-
-                <!-- Actions -->
-                <div class="d-flex gap-2 mt-4">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save"></i> <?php echo $edit_mode ? 'Update' : 'Add'; ?> Student
-                    </button>
-                    <a href="<?php echo BASE_URL . '/?action=students'; ?>" class="btn btn-secondary">
-                        <i class="fas fa-times"></i> Cancel
-                    </a>
-                </div>
-            </form>
-        </div>
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+<script>
+// Bootstrap form validation
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('.needs-validation');
+    form.addEventListener('submit', function(event) {
+        if (!form.checkValidity()) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        form.classList.add('was-validated');
+    }, false);
+});
+</script>
+
+<?php require_once 'templates/footer.php'; ?>

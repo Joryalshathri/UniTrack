@@ -1,254 +1,288 @@
 <?php
 /**
- * Student Detail Page
+ * Student Detail - View Single Student Profile
+ * Displays student information and recent attendance records
  */
 
+session_start();
+require_once '../config/config.php';
+require_once '../config/Database.php';
+require_once '../config/Helpers.php';
+
+// Check authentication
 if (!isLoggedIn()) {
-    redirect(BASE_URL . '/pages/login.php');
+    redirect(BASE_URL . '?action=login');
 }
 
-$currentUser = getCurrentUser();
-$student_id = isset($_GET['id']) ? (int)$_GET['id'] : null;
+$db = Database::getInstance();
+$student_id = $_GET['id'] ?? null;
+$error = '';
 
 if (!$student_id) {
-    redirect(BASE_URL . '/?action=students');
+    $error = 'Student ID is required';
+    redirect(BASE_URL . '?action=students_list');
 }
 
-$studentObj = new Student();
-$student = $studentObj->getStudentById($student_id);
+// Fetch student information
+$result = pg_query_params(
+    $db->getConnection(),
+    'SELECT s.student_id, s.enrollment_number, s.address, s.city, s.state, s.postal_code, 
+            s.created_at, u.user_id, u.first_name, u.last_name, u.email, u.phone, u.role, u.is_active
+     FROM students s 
+     JOIN users u ON s.user_id = u.user_id 
+     WHERE s.student_id = $1',
+    [$student_id]
+);
 
-if (!$student) {
-    redirect(BASE_URL . '/?action=students&error=' . urlencode('Student not found'));
+if (pg_num_rows($result) === 0) {
+    $error = 'Student not found';
+    redirect(BASE_URL . '?action=students_list');
 }
 
-// Get attendance summary
-$attendance = new Attendance();
-$attendanceData = $attendance->getAttendanceSummary(30, $student_id);
-$attendanceSummary = $attendanceData[0] ?? [];
+$student = pg_fetch_assoc($result);
+
+// Fetch recent attendance records (last 30 days)
+$attendance_result = pg_query_params(
+    $db->getConnection(),
+    'SELECT a.attendance_id, a.attendance_date, a.status, a.remarks, a.created_at
+     FROM attendance a
+     WHERE a.student_id = $1 AND DATE(a.attendance_date) >= CURRENT_DATE - INTERVAL \'30 days\'
+     ORDER BY a.attendance_date DESC',
+    [$student_id]
+);
+
+$attendance_records = [];
+while ($row = pg_fetch_assoc($attendance_result)) {
+    $attendance_records[] = $row;
+}
+
+// Calculate attendance statistics
+$stats_result = pg_query_params(
+    $db->getConnection(),
+    'SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN status = \'present\' THEN 1 ELSE 0 END) as present,
+        SUM(CASE WHEN status = \'absent\' THEN 1 ELSE 0 END) as absent,
+        SUM(CASE WHEN status = \'late\' THEN 1 ELSE 0 END) as late
+     FROM attendance
+     WHERE student_id = $1',
+    [$student_id]
+);
+
+$stats = pg_fetch_assoc($stats_result);
+$total_records = (int)$stats['total'];
+$present_count = (int)($stats['present'] ?? 0);
+$absent_count = (int)($stats['absent'] ?? 0);
+$late_count = (int)($stats['late'] ?? 0);
+$attendance_percentage = $total_records > 0 ? round(($present_count / $total_records) * 100, 2) : 0;
+
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $student['first_name'] . ' ' . $student['last_name']; ?> - Student Details</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body {
-            background-color: #f8f9fa;
-        }
-        .sidebar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-            color: white;
-            position: fixed;
-            left: 0;
-            top: 0;
-            width: 250px;
-            z-index: 1000;
-        }
-        .content {
-            margin-left: 250px;
-            padding: 30px;
-        }
-        .sidebar h4 {
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .sidebar a {
-            color: rgba(255, 255, 255, 0.8);
-            text-decoration: none;
-            display: block;
-            padding: 12px 15px;
-            margin: 5px 0;
-            border-radius: 5px;
-            transition: all 0.3s ease;
-        }
-        .sidebar a:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-        }
-        .sidebar a i {
-            width: 20px;
-            margin-right: 10px;
-        }
-        .user-info {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 30px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .user-info small {
-            display: block;
-            opacity: 0.8;
-            margin-top: 5px;
-        }
-        .logout-btn {
-            margin-top: 50px;
-            border-top: 1px solid rgba(255, 255, 255, 0.2);
-            padding-top: 20px;
-        }
-        .detail-card {
-            background: white;
-            border-radius: 8px;
-            padding: 25px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-        }
-        .stat-box {
-            text-align: center;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-        }
-        .stat-box.success {
-            background: #d4edda;
-            color: #155724;
-        }
-        .stat-box.danger {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        .stat-box.warning {
-            background: #fff3cd;
-            color: #856404;
-        }
-        .attendance-records {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                position: relative;
-                min-height: auto;
-            }
-            .content {
-                margin-left: 0;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="sidebar">
-        <h4>
-            <i class="fas fa-graduation-cap"></i> SMMS
-        </h4>
+<?php require_once 'templates/header.php'; ?>
 
-        <div class="user-info">
-            <strong><?php echo ucfirst($currentUser['first_name']); ?> <?php echo ucfirst($currentUser['last_name']); ?></strong>
-            <small><?php echo ucfirst($currentUser['role']); ?></small>
-            <small><?php echo $currentUser['email']; ?></small>
-        </div>
-
-        <a href="<?php echo BASE_URL . '/?action=dashboard'; ?>">
-            <i class="fas fa-chart-line"></i> Dashboard
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=students'; ?>">
-            <i class="fas fa-users"></i> Students
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=mark_attendance'; ?>">
-            <i class="fas fa-clipboard-check"></i> Mark Attendance
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=attendance_report'; ?>">
-            <i class="fas fa-file-alt"></i> Attendance Report
-        </a>
-        <a href="<?php echo BASE_URL . '/?action=reports'; ?>">
-            <i class="fas fa-bar-chart"></i> Reports
-        </a>
-
-        <div class="logout-btn">
-            <a href="<?php echo BASE_URL . '/?action=logout'; ?>" class="text-danger">
-                <i class="fas fa-sign-out-alt"></i> Logout
-            </a>
-        </div>
-    </div>
-
-    <div class="content">
-        <div class="row mb-4">
-            <div class="col">
-                <h1 class="mb-0">
-                    <i class="fas fa-user-graduate"></i> 
-                    <?php echo ucfirst($student['first_name']) . ' ' . ucfirst($student['last_name']); ?>
-                </h1>
+<div class="main-content">
+    <div class="container-fluid p-4">
+        <!-- Page Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1><?php echo htmlspecialchars($student['first_name'] . ' ' . $student['last_name']); ?></h1>
+                <p class="text-muted">Enrollment: <?php echo htmlspecialchars($student['enrollment_number']); ?></p>
             </div>
-            <div class="col-auto">
-                <a href="<?php echo BASE_URL . '/?action=student_form&id=' . $student['student_id']; ?>" class="btn btn-warning">
+            <div>
+                <a href="<?php echo BASE_URL; ?>?action=student_form&id=<?php echo $student_id; ?>" class="btn btn-warning">
                     <i class="fas fa-edit"></i> Edit
                 </a>
-                <a href="<?php echo BASE_URL . '/?action=students'; ?>" class="btn btn-secondary">
+                <a href="<?php echo BASE_URL; ?>?action=delete_student&id=<?php echo $student_id; ?>" class="btn btn-danger" onclick="return confirm('Are you sure you want to delete this student?');">
+                    <i class="fas fa-trash"></i> Delete
+                </a>
+                <a href="<?php echo BASE_URL; ?>?action=students_list" class="btn btn-secondary">
                     <i class="fas fa-arrow-left"></i> Back
                 </a>
             </div>
         </div>
 
-        <!-- Student Information -->
-        <div class="detail-card">
-            <h5 class="mb-3"><i class="fas fa-info-circle"></i> Student Information</h5>
-            <div class="row">
-                <div class="col-md-6 mb-3">
-                    <label class="form-label text-muted">Enrollment Number</label>
-                    <p class="fw-bold"><?php echo $student['enrollment_number']; ?></p>
+        <!-- Profile Information -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-user"></i> Student Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <p class="text-muted"><small>FIRST NAME</small></p>
+                                <p class="h6"><?php echo htmlspecialchars($student['first_name']); ?></p>
+                            </div>
+                            <div class="col-md-6">
+                                <p class="text-muted"><small>LAST NAME</small></p>
+                                <p class="h6"><?php echo htmlspecialchars($student['last_name']); ?></p>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <p class="text-muted"><small>ENROLLMENT NUMBER</small></p>
+                                <p class="h6"><?php echo htmlspecialchars($student['enrollment_number']); ?></p>
+                            </div>
+                            <div class="col-md-6">
+                                <p class="text-muted"><small>ROLE</small></p>
+                                <p class="h6">
+                                    <span class="badge bg-info"><?php echo ucfirst($student['role']); ?></span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <p class="text-muted"><small>EMAIL</small></p>
+                                <p class="h6"><a href="mailto:<?php echo htmlspecialchars($student['email']); ?>"><?php echo htmlspecialchars($student['email']); ?></a></p>
+                            </div>
+                            <div class="col-md-6">
+                                <p class="text-muted"><small>PHONE</small></p>
+                                <p class="h6"><a href="tel:<?php echo htmlspecialchars($student['phone']); ?>"><?php echo htmlspecialchars($student['phone']); ?></a></p>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <p class="text-muted"><small>STATUS</small></p>
+                                <p class="h6">
+                                    <?php if ($student['is_active']): ?>
+                                        <span class="badge bg-success">Active</span>
+                                    <?php else: ?>
+                                        <span class="badge bg-danger">Inactive</span>
+                                    <?php endif; ?>
+                                </p>
+                            </div>
+                            <div class="col-md-6">
+                                <p class="text-muted"><small>CREATED</small></p>
+                                <p class="h6"><?php echo date('M d, Y', strtotime($student['created_at'])); ?></p>
+                            </div>
+                        </div>
+
+                        <?php if (!empty($student['address'])): ?>
+                            <hr>
+                            <div class="row">
+                                <div class="col-12">
+                                    <p class="text-muted"><small>ADDRESS</small></p>
+                                    <p class="h6">
+                                        <?php echo htmlspecialchars($student['address']); ?><br>
+                                        <?php 
+                                            echo htmlspecialchars($student['city']); 
+                                            if (!empty($student['state'])) echo ', ' . htmlspecialchars($student['state']);
+                                            if (!empty($student['postal_code'])) echo ' ' . htmlspecialchars($student['postal_code']);
+                                        ?>
+                                    </p>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <div class="col-md-6 mb-3">
-                    <label class="form-label text-muted">Username</label>
-                    <p class="fw-bold"><?php echo $student['username']; ?></p>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <label class="form-label text-muted">Email</label>
-                    <p class="fw-bold"><?php echo $student['email']; ?></p>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <label class="form-label text-muted">Phone Number</label>
-                    <p class="fw-bold"><?php echo $student['phone_number'] ?? 'N/A'; ?></p>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <label class="form-label text-muted">Date of Birth</label>
-                    <p class="fw-bold"><?php echo $student['date_of_birth'] ?? 'N/A'; ?></p>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <label class="form-label text-muted">Address</label>
-                    <p class="fw-bold"><?php echo ($student['address'] . ', ' . $student['city']) ?? 'N/A'; ?></p>
+            </div>
+
+            <!-- Attendance Statistics -->
+            <div class="col-md-4">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="fas fa-chart-pie"></i> Attendance Overview</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="text-center mb-3">
+                            <h2 class="text-success"><?php echo $attendance_percentage; ?>%</h2>
+                            <p class="text-muted">Attendance Rate</p>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <small>Present</small>
+                                <small class="text-success"><strong><?php echo $present_count; ?></strong></small>
+                            </div>
+                            <div class="progress" style="height: 5px;">
+                                <div class="progress-bar bg-success" style="width: <?php echo $total_records > 0 ? ($present_count / $total_records) * 100 : 0; ?>%"></div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <small>Absent</small>
+                                <small class="text-danger"><strong><?php echo $absent_count; ?></strong></small>
+                            </div>
+                            <div class="progress" style="height: 5px;">
+                                <div class="progress-bar bg-danger" style="width: <?php echo $total_records > 0 ? ($absent_count / $total_records) * 100 : 0; ?>%"></div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <small>Late</small>
+                                <small class="text-warning"><strong><?php echo $late_count; ?></strong></small>
+                            </div>
+                            <div class="progress" style="height: 5px;">
+                                <div class="progress-bar bg-warning" style="width: <?php echo $total_records > 0 ? ($late_count / $total_records) * 100 : 0; ?>%"></div>
+                            </div>
+                        </div>
+
+                        <hr>
+                        <p class="text-muted text-center"><small>Total Records: <strong><?php echo $total_records; ?></strong></small></p>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Attendance Summary -->
-        <div class="detail-card">
-            <h5 class="mb-3"><i class="fas fa-calendar-check"></i> Attendance Summary (Last 30 Days)</h5>
-            <div class="row">
-                <div class="col-md-3">
-                    <div class="stat-box success">
-                        <h6>Present</h6>
-                        <h3><?php echo $attendanceSummary['present_days'] ?? 0; ?></h3>
+        <!-- Recent Attendance Records -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-calendar-check"></i> Recent Attendance (Last 30 Days)</h5>
+            </div>
+            <div class="card-body">
+                <?php if (count($attendance_records) > 0): ?>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Remarks</th>
+                                    <th>Recorded At</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($attendance_records as $record): ?>
+                                    <tr>
+                                        <td>
+                                            <strong><?php echo date('M d, Y', strtotime($record['attendance_date'])); ?></strong>
+                                        </td>
+                                        <td>
+                                            <?php 
+                                                $status_class = [
+                                                    'present' => 'success',
+                                                    'absent' => 'danger',
+                                                    'late' => 'warning'
+                                                ][$record['status']] ?? 'secondary';
+                                            ?>
+                                            <span class="badge bg-<?php echo $status_class; ?>">
+                                                <?php echo ucfirst($record['status']); ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <?php echo !empty($record['remarks']) ? htmlspecialchars($record['remarks']) : '<span class="text-muted">—</span>'; ?>
+                                        </td>
+                                        <td>
+                                            <small class="text-muted"><?php echo date('M d, Y H:i', strtotime($record['created_at'])); ?></small>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
                     </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-box danger">
-                        <h6>Absent</h6>
-                        <h3><?php echo $attendanceSummary['absent_days'] ?? 0; ?></h3>
+                <?php else: ?>
+                    <div class="alert alert-info mb-0">
+                        <i class="fas fa-info-circle"></i> No attendance records found in the last 30 days.
                     </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-box warning">
-                        <h6>Late</h6>
-                        <h3><?php echo $attendanceSummary['late_days'] ?? 0; ?></h3>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-box" style="background: #e2e3e5; color: #383d41;">
-                        <h6>Percentage</h6>
-                        <h3><?php echo $attendanceSummary['attendance_percentage'] ?? 0; ?>%</h3>
-                    </div>
-                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+<?php require_once 'templates/footer.php'; ?>

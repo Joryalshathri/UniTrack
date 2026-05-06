@@ -48,6 +48,9 @@ switch ($action) {
     case 'reports':
         require 'pages/reports_dashboard.php';
         break;
+    case 'delete_student':
+        require 'pages/delete_student.php';
+        break;
     default:
         http_response_code(404);
         echo "Page not found";

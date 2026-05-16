@@ -1,55 +1,113 @@
 <?php
-/**
- * Dashboard Page
- */
-
-require_once 'templates/header.php';
-
-// Check if logged in
-if (!isLoggedIn()) {
-    redirect(BASE_URL . '?action=login');
+session_start();
+if (!isset($_SESSION['user_id'])) {
+    header('Location: pages/login.php');
+    exit;
 }
 
+$student_count = 0;
+$attendance_count = 0;
+
 try {
-    $db = Database::getInstance();
-    
-    // Get statistics
-    $total_students = $db->fetchOne("SELECT COUNT(*) as count FROM students WHERE user_id IN (SELECT user_id FROM users WHERE is_active = true)");
-    $total_users = $db->fetchOne("SELECT COUNT(*) as count FROM users");
-    $total_attendance = $db->fetchOne("SELECT COUNT(*) as count FROM attendance");
-    
-    // Get today's attendance summary
-    $today = date('Y-m-d');
-    $today_summary = $db->fetchOne(
-        "SELECT 
-            SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present,
-            SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent,
-            SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END) as late
-        FROM attendance
-        WHERE DATE(attendance_date) = $1",
-        [$today]
-    );
+    $conn = pg_connect("host=localhost dbname=unitrack_db user=postgres password=postgres");
+    if ($conn) {
+        $result = pg_query($conn, 'SELECT COUNT(*) as total FROM students');
+        $student_count = pg_fetch_assoc($result)['total'];
+        
+        $result = pg_query($conn, 'SELECT COUNT(*) as total FROM attendance');
+        $attendance_count = pg_fetch_assoc($result)['total'];
+        
+        pg_close($conn);
+    }
 } catch (Exception $e) {
-    $error = "Error loading statistics: " . $e->getMessage();
+    // error
 }
 ?>
 
-<div class="main-content">
-    <div class="container-fluid p-4">
-        <!-- Header -->
-        <div class="row mb-4">
-            <div class="col-md-8">
-                <h1 class="h3 mb-0">
-                    <i class="fas fa-chart-line"></i> Dashboard
-                </h1>
-                <p class="text-muted">Welcome, <?php echo htmlspecialchars($_SESSION['first_name'] . ' ' . $_SESSION['last_name']); ?>!</p>
-            </div>
-            <div class="col-md-4 text-end">
-                <span class="badge bg-<?php echo $_SESSION['role'] === 'admin' ? 'danger' : ($_SESSION['role'] === 'teacher' ? 'warning' : 'info'); ?>">
-                    <?php echo strtoupper($_SESSION['role']); ?>
-                </span>
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - UniTrack</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .navbar { background: rgba(0,0,0,0.1); }
+        .container { margin-top: 20px; }
+        .card { border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand fw-bold" href="index.php?action=dashboard">📚 UniTrack</a>
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link active" href="index.php?action=dashboard">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="index.php?action=students">Students</a></li>
+                    <li class="nav-item"><a class="nav-link" href="index.php?action=mark_attendance">Mark</a></li>
+                    <li class="nav-item"><a class="nav-link" href="index.php?action=view_attendance">Records</a></li>
+                    <li class="nav-item"><a class="nav-link" href="index.php?action=logout">Logout</a></li>
+                </ul>
             </div>
         </div>
+    </nav>
+    
+    <div class="container">
+        <div class="row mt-5">
+            <div class="col-md-4">
+                <div class="card text-white bg-primary">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Students</h5>
+                        <h2><?php echo $student_count; ?></h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-white bg-success">
+                    <div class="card-body">
+                        <h5 class="card-title">Attendance Records</h5>
+                        <h2><?php echo $attendance_count; ?></h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-white bg-info">
+                    <div class="card-body">
+                        <h5 class="card-title">Welcome</h5>
+                        <p><?php echo htmlspecialchars($_SESSION['first_name'] ?? 'User'); ?></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-5">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Student Management</h5>
+                        <a href="index.php?action=students" class="btn btn-primary">View Students</a>
+                        <a href="index.php?action=add_student" class="btn btn-success">Add Student</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Attendance</h5>
+                        <a href="index.php?action=mark_attendance" class="btn btn-primary">Mark Attendance</a>
+                        <a href="index.php?action=view_attendance" class="btn btn-info">View Records</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
 
         <!-- Statistics Cards -->
         <div class="row mb-4">

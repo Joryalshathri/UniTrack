@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard - UniTrack{% endblock %}
+{% block content %}
+<div class="row mt-5">
+    <div class="col-md-4">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5 class="card-title">Total Students</h5>
+                <h2>{{ student_count }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h5 class="card-title">Attendance Records</h5>
+                <h2>{{ attendance_count }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <h5 class="card-title">Welcome</h5>
+                <p>{{ username }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row mt-5">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Student Management</h5>
+                <a href="/students" class="btn btn-primary">View Students</a>
+                <a href="/students/add" class="btn btn-success">Add Student</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Attendance</h5>
+                <a href="/attendance/mark" class="btn btn-primary">Mark Attendance</a>
+                <a href="/attendance/view" class="btn btn-info">View Records</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

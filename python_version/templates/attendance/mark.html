@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}Mark Attendance - UniTrack{% endblock %}
+{% block content %}
+<div class="row mt-5">
+    <div class="col-md-12">
+        <h2>Mark Attendance</h2>
+        <div class="card mt-3">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Attendance Date *</label>
+                        <input type="date" class="form-control" name="attendance_date" value="{{ today }}" required>
+                    </div>
+                    <table class="table table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Student Name</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for student in students %}
+                            <tr>
+                                <td>{{ student.first_name }} {{ student.last_name }}</td>
+                                <td>
+                                    <select class="form-select" name="status_{{ student.student_id }}" required>
+                                        <option value="">-- Select --</option>
+                                        <option value="present">Present</option>
+                                        <option value="absent">Absent</option>
+                                        <option value="late">Late</option>
+                                    </select>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <button type="submit" class="btn btn-primary">Save Attendance</button>
+                    <a href="/dashboard" class="btn btn-secondary">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

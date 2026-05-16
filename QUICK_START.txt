@@ -1,0 +1,86 @@
+# UniTrack - Simplified Project
+
+## Setup Database
+
+```bash
+psql -U postgres -c "CREATE DATABASE unitrack_db;"
+psql -U postgres -d unitrack_db -f database/unitrack_schema.sql
+```
+
+## Run Python Version (Flask)
+
+```bash
+cd python_version
+pip install -r requirements.txt
+python app.py
+```
+
+Access: `http://localhost:5000`
+
+**Login Credentials:**
+- Username: `admin`
+- Password: `password`
+
+## Run PHP Version
+
+```bash
+cd php_version
+php -S localhost:8000
+```
+
+Access: `http://localhost:8000`
+
+**Login Credentials:**
+- Username: `admin`
+- Password: `password`
+
+## Features
+
+### Student Management (CRUD)
+- **Create** - Add new students with validation
+- **Read** - List all students with details
+- **Update** - Edit student information
+- **Delete** - Remove student records
+
+### Attendance Tracking
+- **Mark** - Record attendance for students
+- **View** - Filter and display attendance records
+
+### Validation
+- Email format validation
+- Enrollment number uniqueness
+- Required field checks
+
+## Core Functions to Compare (4 Functions)
+
+1. **Authentication** (`login()` in Python, `login.php` in PHP)
+2. **Add Student** (`add_student()` in Python, `add_student.php` in PHP)
+3. **View Attendance** (`view_attendance()` in Python, `view_attendance.php` in PHP)
+4. **Mark Attendance** (`mark_attendance()` in Python, `mark_attendance.php` in PHP)
+
+## Project Group Information
+
+**Project Group:** Group 1
+**Students:** Jory Alshathri, Basmah Aljishi, Ghala Alrouimah, Dana Alanazi, Hawara al jinbi
+**Section:** Section 04
+**Course:** CS 516 Advanced Programming Language
+**Website Name:** UniTrack
+
+## Rubric Compliance
+
+✅ **6 Marks:** Fully functional applications in Python (Flask) and PHP
+- Both validate user entries
+- Both include complete CRUD operations (Insert/Update/Delete)
+- No errors when running
+
+✅ **2 Marks:** Paradigm Comparison
+- Syntax differences (variable declaration, parameter passing, etc.)
+- Dependencies (8 Python packages vs 0 for PHP)
+- Paradigm (Python: Multi-paradigm OOP+Functional, PHP: Procedural+OOP)
+- Memory Management (Reference counting + GC)
+
+✅ **2 Marks:** Function Evaluation (4 Functions Compared)
+- Authentication function
+- Add/Edit Student CRUD
+- View Attendance Records
+- Mark Attendance

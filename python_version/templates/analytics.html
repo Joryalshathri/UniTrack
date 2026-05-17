@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block title %}Analytics & Statistics - UniTrack{% endblock %}
+{% block content %}
+
+<div class="container mt-5">
+    <h1 class="mb-4">📊 Attendance Analytics</h1>
+    
+    <!-- Overall Statistics Cards -->
+    <div class="row mb-5">
+        <div class="col-md-2">
+            <div class="card text-white bg-primary">
+                <div class="card-body text-center">
+                    <h6 class="card-title">Total Students</h6>
+                    <h3>{{ overall_stats.total_students or 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card text-white bg-success">
+                <div class="card-body text-center">
+                    <h6 class="card-title">Total Records</h6>
+                    <h3>{{ overall_stats.total_records or 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card text-white bg-info">
+                <div class="card-body text-center">
+                    <h6 class="card-title">Present</h6>
+                    <h3>{{ overall_stats.total_present or 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card text-white bg-warning">
+                <div class="card-body text-center">
+                    <h6 class="card-title">Absent</h6>
+                    <h3>{{ overall_stats.total_absent or 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card text-white bg-danger">
+                <div class="card-body text-center">
+                    <h6 class="card-title">Late</h6>
+                    <h3>{{ overall_stats.total_late or 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card text-white bg-dark">
+                <div class="card-body text-center">
+                    <h6 class="card-title">Attendance %</h6>
+                    <h3>{{ overall_stats.overall_percentage or 0 }}%</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Student Attendance Summary Table -->
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">📋 Student Attendance Summary</h5>
+        </div>
+        <div class="card-body">
+            {% if attendance_summary %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>#</th>
+                            <th>Enrollment #</th>
+                            <th>Student Name</th>
+                            <th>Total Days</th>
+                            <th class="text-success">Present</th>
+                            <th class="text-warning">Absent</th>
+                            <th class="text-danger">Late</th>
+                            <th>Attendance %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in attendance_summary %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td><strong>{{ record.enrollment_number }}</strong></td>
+                            <td>{{ record.first_name }} {{ record.last_name }}</td>
+                            <td>{{ record.total_days or 0 }}</td>
+                            <td><span class="badge bg-success">{{ record.present_count or 0 }}</span></td>
+                            <td><span class="badge bg-warning">{{ record.absent_count or 0 }}</span></td>
+                            <td><span class="badge bg-danger">{{ record.late_count or 0 }}</span></td>
+                            <td>
+                                {% if record.attendance_percentage %}
+                                    <strong>{{ record.attendance_percentage }}%</strong>
+                                    {% if record.attendance_percentage >= 75 %}
+                                        <span class="badge bg-success">Good</span>
+                                    {% elif record.attendance_percentage >= 50 %}
+                                        <span class="badge bg-warning">Fair</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Poor</span>
+                                    {% endif %}
+                                {% else %}
+                                    <em>No data</em>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info">No attendance records found.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+    .table {
+        font-size: 0.95rem;
+    }
+    .badge {
+        font-size: 0.85rem;
+        padding: 0.4rem 0.6rem;
+    }
+    .card {
+        margin-top: 1rem;
+    }
+</style>
+
+{% endblock %}

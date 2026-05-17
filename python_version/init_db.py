@@ -34,14 +34,13 @@ def initialize_database():
             
             # List of users to update with hashed passwords
             users = [
-                ('admin123', 'password'),
-                ('teacher_john', 'password'),
-                ('teacher_sarah', 'password'),
-                ('student_alice', 'password'),
-                ('student_bob', 'password'),
-                ('student_charlie', 'password'),
-                ('student_diana', 'password'),
-                ('student_eve', 'password'),
+                ('admin', 'password'),
+                ('teacher_ahmad', 'password'),
+                ('student_ali', 'password'),
+                ('student_fatima', 'password'),
+                ('student_mohammad', 'password'),
+                ('student_noor', 'password'),
+                ('student_sara', 'password'),
             ]
             
             print("\n📝 Updating passwords...")
@@ -53,9 +52,9 @@ def initialize_database():
             
             print("\n✅ Database initialization complete!")
             print("\n📋 Sample Login Credentials:")
-            print("   ├─ Admin:    admin123 / password")
-            print("   ├─ Teacher:  teacher_john / password")
-            print("   └─ Student:  student_alice / password")
+            print("   ├─ Admin:    admin / password")
+            print("   ├─ Teacher:  teacher_ahmad / password")
+            print("   └─ Student:  student_ali / password")
             print("\n" + "="*70)
             
             return True

@@ -121,15 +121,15 @@ INSERT INTO users (username, email, password_hash, role, first_name, last_name) 
 ('admin123', 'admin@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'admin', 'Admin', 'User'),
 
 -- Teacher Users
-('teacher_john', 'john@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'teacher', 'John', 'Smith'),
-('teacher_sarah', 'sarah@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'teacher', 'Sarah', 'Johnson'),
+('teacher_ahmad', 'ahmad@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'teacher', 'أحمد', 'علي'),
+('teacher_maryam', 'maryam@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'teacher', 'مريم', 'محمد'),
 
 -- Student Users
-('student_alice', 'alice@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'student', 'Alice', 'Brown'),
-('student_bob', 'bob@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'student', 'Bob', 'Davis'),
-('student_charlie', 'charlie@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'student', 'Charlie', 'Wilson'),
-('student_diana', 'diana@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'student', 'Diana', 'Martinez'),
-('student_eve', 'eve@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'student', 'Eve', 'Garcia');
+('student_ali', 'ali@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'student', 'علي', 'الحسن'),
+('student_fatima', 'fatima@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'student', 'فاطمة', 'محمود'),
+('student_mohammad', 'mohammad@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'student', 'محمد', 'أحمد'),
+('student_noor', 'noor@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'student', 'نور', 'علي'),
+('student_sara', 'sara@university.edu', '$2b$10$btmfy7D2JN.t9TwPCte4juDrp6hnvId4KzS9fv8Q.WtAOybro/oeq', 'student', 'سارة', 'كريم');
 
 -- Insert Sample Students (linked to student users)
 INSERT INTO students (user_id, enrollment_number, date_of_birth, phone_number, address, city, state, postal_code) VALUES

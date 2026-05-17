@@ -100,7 +100,9 @@ def dashboard():
         return render_template('dashboard.html', 
                              student_count=student_count, 
                              attendance_count=attendance_count,
-                             username=session.get('first_name'))
+                             username=session.get('username'),
+                             first_name=session.get('first_name'),
+                             role=session.get('role'))
     except Exception as e:
         flash(f'Error: {str(e)}', 'error')
         return redirect(url_for('login'))
@@ -125,6 +127,11 @@ def list_students():
 @app.route('/students/add', methods=['GET', 'POST'])
 @login_required
 def add_student():
+    # Only admins can add students
+    if session.get('role') != 'admin':
+        flash('Only admins can add students', 'error')
+        return redirect(url_for('dashboard'))
+    
     if request.method == 'POST':
         enrollment = request.form.get('enrollment_number', '').strip()
         first_name = request.form.get('first_name', '').strip()
@@ -146,7 +153,7 @@ def add_student():
             conn = get_db()
             cursor = conn.cursor()
             cursor.execute(
-                '''INSERT INTO students (enrollment_number, first_name, last_name, email, phone, date_of_birth) 
+                '''INSERT INTO students (enrollment_number, first_name, last_name, email, phone_number, date_of_birth) 
                    VALUES (%s, %s, %s, %s, %s, %s)''',
                 (enrollment, first_name, last_name, email, phone if phone else None, dob if dob else None)
             )
@@ -184,7 +191,7 @@ def edit_student(student_id):
                 return redirect(url_for('edit_student', student_id=student_id))
             
             cursor.execute(
-                '''UPDATE students SET first_name = %s, last_name = %s, email = %s, phone = %s, date_of_birth = %s 
+                '''UPDATE students SET first_name = %s, last_name = %s, email = %s, phone_number = %s, date_of_birth = %s 
                    WHERE student_id = %s''',
                 (first_name, last_name, email, phone if phone else None, dob if dob else None, student_id)
             )
@@ -235,9 +242,9 @@ def mark_attendance():
                 if key.startswith('status_'):
                     student_id = key.replace('status_', '')
                     cursor.execute(
-                        '''INSERT INTO attendance (student_id, attendance_date, status) 
-                           VALUES (%s, %s, %s)''',
-                        (student_id, attendance_date, value)
+                        '''INSERT INTO attendance (student_id, attendance_date, status, marked_by) 
+                           VALUES (%s, %s, %s, %s)''',
+                        (student_id, attendance_date, value, session['user_id'])
                     )
             conn.commit()
             flash('Attendance marked successfully', 'success')
@@ -285,6 +292,63 @@ def view_attendance():
         conn.close()
         
         return render_template('attendance/view.html', records=records, students=students)
+    except Exception as e:
+        flash(f'Error: {str(e)}', 'error')
+        return redirect(url_for('dashboard'))
+
+@app.route('/analytics')
+@login_required
+def analytics():
+    # Only admins can access analytics
+    if session.get('role') != 'admin':
+        flash('Only admins can access analytics', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        conn = get_db()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get attendance summary per student
+        query = '''
+            SELECT 
+                s.student_id,
+                s.enrollment_number,
+                s.first_name,
+                s.last_name,
+                COUNT(*) as total_days,
+                SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) as present_count,
+                SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) as absent_count,
+                SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) as late_count,
+                ROUND(100.0 * SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 2) as attendance_percentage
+            FROM students s
+            LEFT JOIN attendance a ON s.student_id = a.student_id
+            GROUP BY s.student_id, s.enrollment_number, s.first_name, s.last_name
+            ORDER BY attendance_percentage DESC NULLS LAST
+        '''
+        
+        cursor.execute(query)
+        attendance_summary = cursor.fetchall()
+        
+        # Get overall statistics
+        cursor.execute('''
+            SELECT 
+                COUNT(DISTINCT s.student_id) as total_students,
+                COUNT(a.attendance_id) as total_records,
+                SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) as total_present,
+                SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) as total_absent,
+                SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) as total_late,
+                ROUND(100.0 * SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) / NULLIF(COUNT(a.attendance_id), 0), 2) as overall_percentage
+            FROM students s
+            LEFT JOIN attendance a ON s.student_id = a.student_id
+        ''')
+        overall_stats = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        return render_template('analytics.html', 
+                             attendance_summary=attendance_summary,
+                             overall_stats=overall_stats)
     except Exception as e:
         flash(f'Error: {str(e)}', 'error')
         return redirect(url_for('dashboard'))

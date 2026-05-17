@@ -22,27 +22,33 @@
         <div class="card text-white bg-info">
             <div class="card-body">
                 <h5 class="card-title">Welcome</h5>
-                <p>{{ username }}</p>
+                <p>{{ first_name }} ({{ role }})</p>
             </div>
         </div>
     </div>
 </div>
+
 <div class="row mt-5">
     <div class="col-md-6">
         <div class="card">
             <div class="card-body">
-                <h5 class="card-title">Student Management</h5>
+                <h5 class="card-title">📚 Student Management</h5>
                 <a href="/students" class="btn btn-primary">View Students</a>
+                {% if role == 'admin' %}
                 <a href="/students/add" class="btn btn-success">Add Student</a>
+                {% endif %}
             </div>
         </div>
     </div>
     <div class="col-md-6">
         <div class="card">
             <div class="card-body">
-                <h5 class="card-title">Attendance</h5>
+                <h5 class="card-title">✅ Attendance</h5>
                 <a href="/attendance/mark" class="btn btn-primary">Mark Attendance</a>
                 <a href="/attendance/view" class="btn btn-info">View Records</a>
+                {% if role == 'admin' %}
+                <a href="/analytics" class="btn btn-secondary">📊 Analytics</a>
+                {% endif %}
             </div>
         </div>
     </div>

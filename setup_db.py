@@ -98,30 +98,30 @@ def setup_database():
         cur.execute("""
             INSERT INTO users (username, email, password_hash, role, first_name, last_name)
             VALUES 
-                ('admin', 'admin@unitrack.edu', '$2b$10$slYQmyNdGzin7olVN3p5Be52.5557ySHewKiYipmMmw3ytrF90GXm', 'admin', 'Admin', 'User'),
-                ('teacher_john', 'john@unitrack.edu', '$2b$10$slYQmyNdGzin7olVN3p5Be52.5557ySHewKiYipmMmw3ytrF90GXm', 'teacher', 'John', 'Doe');
+                ('admin', 'admin@unitrack.edu', '$2b$10$O/KM3xBFvfmjaKAtS2wmiucw7.AUSaZhWkqGGrml4sauqFow55/36', 'admin', 'Admin', 'System'),
+                ('teacher_amal', 'amal@unitrack.edu', '$2b$10$O/KM3xBFvfmjaKAtS2wmiucw7.AUSaZhWkqGGrml4sauqFow55/36', 'teacher', 'أمل', 'الهاجري');
         """)
         print("✅ Inserted users")
         
         cur.execute("""
             INSERT INTO students (enrollment_number, first_name, last_name, email, phone_number, date_of_birth)
             VALUES 
-                ('STU001', 'Alice', 'Johnson', 'alice@student.edu', '5551234567', '2000-01-15'),
-                ('STU002', 'Bob', 'Smith', 'bob@student.edu', '5552345678', '2000-03-22'),
-                ('STU003', 'Charlie', 'Brown', 'charlie@student.edu', '5553456789', '2001-05-10'),
-                ('STU004', 'Diana', 'Prince', 'diana@student.edu', '5554567890', '2000-07-30'),
-                ('STU005', 'Eve', 'Davis', 'eve@student.edu', '5555678901', '2001-09-12');
+                ('STU001', 'ليلى', 'الحسن', 'layla@student.edu', '5551234567', '2000-01-15'),
+                ('STU002', 'فاطمة', 'محمود', 'fatima@student.edu', '5552345678', '2000-03-22'),
+                ('STU003', 'هند', 'أحمد', 'hind@student.edu', '5553456789', '2001-05-10'),
+                ('STU004', 'نور', 'علي', 'noor@student.edu', '5554567890', '2000-07-30'),
+                ('STU005', 'سارة', 'كريم', 'sara@student.edu', '5555678901', '2001-09-12');
         """)
         print("✅ Inserted students")
         
         cur.execute("""
             INSERT INTO attendance (student_id, attendance_date, status, marked_by, remarks)
             VALUES 
-                (1, CURRENT_DATE - INTERVAL '1 day', 'present', 2, 'Regular attendance'),
-                (2, CURRENT_DATE - INTERVAL '1 day', 'present', 2, NULL),
-                (3, CURRENT_DATE - INTERVAL '1 day', 'absent', 2, 'Sick leave'),
-                (4, CURRENT_DATE - INTERVAL '1 day', 'late', 2, '15 mins late'),
-                (5, CURRENT_DATE - INTERVAL '1 day', 'present', 2, NULL);
+                (1, CURRENT_DATE - INTERVAL '1 day', 'present', 1, 'Regular attendance'),
+                (2, CURRENT_DATE - INTERVAL '1 day', 'present', 1, NULL),
+                (3, CURRENT_DATE - INTERVAL '1 day', 'absent', 1, 'Sick leave'),
+                (4, CURRENT_DATE - INTERVAL '1 day', 'late', 1, '15 mins late'),
+                (5, CURRENT_DATE - INTERVAL '1 day', 'present', 1, NULL);
         """)
         print("✅ Inserted attendance records")
         

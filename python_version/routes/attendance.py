@@ -1,7 +1,7 @@
 """
 Attendance management routes blueprint
 """
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
 from decorators import require_login, require_role
 from datetime import datetime
 from database import Database
@@ -12,24 +12,90 @@ db = Database.get_instance()
 
 @attendance_bp.route('/mark', methods=['GET', 'POST'])
 @require_login
+@require_role('admin', 'teacher')
 def mark_attendance():
     """Mark attendance for students"""
     try:
         if request.method == 'POST':
-            attendance_date = request.form.get('attendance_date')
+            # Extract JSON data
+            data = request.json if request.is_json else request.form
+            attendance_records = data.get('attendance', [])
+            attendance_date = data.get('attendance_date')
             
-            for key, value in request.form.items():
-                if key.startswith('status_'):
-                    student_id = key.replace('status_', '')
-                    query = '''
-                        INSERT INTO attendance (student_id, attendance_date, status, marked_by) 
-                        VALUES (%s, %s, %s, %s)
+            if not attendance_records:
+                return jsonify({'success': False, 'error': 'No attendance records provided'}), 400
+            
+            if not attendance_date:
+                return jsonify({'success': False, 'error': 'No attendance date provided'}), 400
+            
+            saved_count = 0
+            errors = []
+            valid_statuses = ['present', 'absent', 'late']
+            
+            for record in attendance_records:
+                try:
+                    student_id = record.get('student_id')
+                    status = record.get('status')
+                    remarks = record.get('remarks', '')
+                    
+                    # Validate student ID
+                    if not student_id or not str(student_id).isdigit():
+                        errors.append(f'Invalid student ID: {student_id}')
+                        continue
+                    
+                    # Validate status
+                    if status not in valid_statuses:
+                        errors.append(f'Invalid status for student {student_id}: {status}')
+                        continue
+                    
+                    # Check if student exists
+                    student_check = db.fetch_one(
+                        'SELECT student_id FROM students WHERE student_id = %s', 
+                        [student_id]
+                    )
+                    if not student_check:
+                        errors.append(f'Student {student_id} not found')
+                        continue
+                    
+                    # Check if attendance already marked for this date
+                    check_query = '''
+                        SELECT attendance_id FROM attendance
+                        WHERE student_id = %s AND DATE(attendance_date) = %s
                     '''
-                    db.execute(query, [student_id, attendance_date, value, session['user_id']])
+                    existing = db.fetch_one(check_query, [student_id, attendance_date])
+                    
+                    if existing:
+                        # Update existing record
+                        update_query = '''
+                            UPDATE attendance
+                            SET status = %s, remarks = %s, marked_by = %s
+                            WHERE attendance_id = %s
+                        '''
+                        db.execute(update_query, [status, remarks, session['user_id'], existing['attendance_id']])
+                    else:
+                        # Insert new record
+                        insert_query = '''
+                            INSERT INTO attendance (student_id, attendance_date, status, marked_by, remarks)
+                            VALUES (%s, %s, %s, %s, %s)
+                        '''
+                        db.execute(insert_query, [student_id, attendance_date, status, session['user_id'], remarks])
+                    
+                    saved_count += 1
+                except Exception as e:
+                    errors.append(f"Error for student {record.get('student_id')}: {str(e)}")
             
-            flash('Attendance marked successfully', 'success')
-            return redirect(url_for('attendance.mark_attendance'))
+            message = f"Attendance saved for {saved_count} student(s)"
+            if errors:
+                message += f". {len(errors)} error(s) occurred"
+            
+            return jsonify({
+                'success': True,
+                'message': message,
+                'saved_count': saved_count,
+                'errors': errors
+            }), 200
         
+        # GET request - display form
         # Get all active students
         query = '''
             SELECT s.student_id, u.first_name, u.last_name, s.enrollment_number, u.email
@@ -40,9 +106,21 @@ def mark_attendance():
         '''
         students = db.fetch_all(query)
         
+        # Check if attendance already marked today
+        today = datetime.now().date()
+        check_query = '''
+            SELECT COUNT(*) as count FROM attendance
+            WHERE DATE(attendance_date) = %s
+        '''
+        count = db.fetch_one(check_query, [today])
+        marked_today = count['count'] > 0 if count else False
+        
         return render_template('attendance/mark.html', students=students, 
-                             today=datetime.now().strftime('%Y-%m-%d'))
+                             today=datetime.now().strftime('%Y-%m-%d'),
+                             marked_today=marked_today)
     except Exception as e:
+        if request.method == 'POST':
+            return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
         flash(f'Error: {str(e)}', 'error')
         return redirect(url_for('dashboard.dashboard'))
 

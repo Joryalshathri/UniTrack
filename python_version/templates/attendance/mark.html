@@ -6,39 +6,106 @@
         <h2>Mark Attendance</h2>
         <div class="card mt-3">
             <div class="card-body">
-                <form method="POST">
+                <form id="attendanceForm">
                     <div class="mb-3">
                         <label class="form-label">Attendance Date *</label>
-                        <input type="date" class="form-control" name="attendance_date" value="{{ today }}" required>
+                        <input type="date" id="attendanceDate" class="form-control" value="{{ today }}" required>
                     </div>
                     <table class="table table-striped">
                         <thead class="table-dark">
                             <tr>
                                 <th>Student Name</th>
+                                <th>Enrollment</th>
                                 <th>Status</th>
+                                <th>Remarks</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="studentTableBody">
                             {% for student in students %}
-                            <tr>
+                            <tr data-student-id="{{ student.student_id }}">
                                 <td>{{ student.first_name }} {{ student.last_name }}</td>
+                                <td>{{ student.enrollment_number }}</td>
                                 <td>
-                                    <select class="form-select" name="status_{{ student.student_id }}" required>
+                                    <select class="form-select status-select" required>
                                         <option value="">-- Select --</option>
                                         <option value="present">Present</option>
                                         <option value="absent">Absent</option>
                                         <option value="late">Late</option>
                                     </select>
                                 </td>
+                                <td>
+                                    <input type="text" class="form-control remarks-input" placeholder="Optional remarks">
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
-                    <button type="submit" class="btn btn-primary">Save Attendance</button>
-                    <a href="/dashboard" class="btn btn-secondary">Cancel</a>
+                    <button type="button" class="btn btn-primary" onclick="submitAttendance()">Save Attendance</button>
+                    <a href="/" class="btn btn-secondary">Cancel</a>
                 </form>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+async function submitAttendance() {
+    const attendanceDate = document.getElementById('attendanceDate').value;
+    
+    if (!attendanceDate) {
+        alert('Please select attendance date');
+        return;
+    }
+    
+    const attendance = [];
+    const rows = document.querySelectorAll('#studentTableBody tr');
+    
+    rows.forEach(row => {
+        const studentId = row.getAttribute('data-student-id');
+        const status = row.querySelector('.status-select').value;
+        const remarks = row.querySelector('.remarks-input').value;
+        
+        if (status) {
+            attendance.push({
+                student_id: studentId,
+                status: status,
+                remarks: remarks
+            });
+        }
+    });
+    
+    if (attendance.length === 0) {
+        alert('Please mark at least one student');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/attendance/mark', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                attendance_date: attendanceDate,
+                attendance: attendance
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert(`${data.message}\nSaved: ${data.saved_count} records`);
+            if (data.errors && data.errors.length > 0) {
+                console.log('Errors:', data.errors);
+            }
+            window.location.href = '/attendance/mark';
+        } else {
+            alert('Error: ' + (data.error || 'Failed to save attendance'));
+        }
+    } catch (error) {
+        alert('Error submitting attendance: ' + error.message);
+        console.error('Error:', error);
+    }
+}
+</script>
 {% endblock %}

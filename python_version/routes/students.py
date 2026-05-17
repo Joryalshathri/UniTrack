@@ -66,8 +66,8 @@ def add_student():
 
 @students_bp.route('/edit/<int:student_id>', methods=['GET', 'POST'])
 @require_login
-def edit_student(student_id):
-    """Edit student information"""
+def update_student(student_id):
+    """Update student information"""
     try:
         if request.method == 'POST':
             first_name = request.form.get('first_name', '').strip()
@@ -78,11 +78,11 @@ def edit_student(student_id):
             
             if not first_name or not last_name or not email:
                 flash('All fields required', 'error')
-                return redirect(url_for('students.edit_student', student_id=student_id))
+                return redirect(url_for('students.update_student', student_id=student_id))
             
             if '@' not in email or '.' not in email:
                 flash('Invalid email', 'error')
-                return redirect(url_for('students.edit_student', student_id=student_id))
+                return redirect(url_for('students.update_student', student_id=student_id))
             
             student_model.update_student(student_id, first_name, last_name, email,
                                         phone if phone else None, dob if dob else None)
@@ -107,3 +107,38 @@ def delete_student(student_id):
         flash(f'Error: {str(e)}', 'error')
     
     return redirect(url_for('students.list_students'))
+
+
+@students_bp.route('/<int:student_id>', methods=['GET'])
+@require_login
+def view_student(student_id):
+    """View student details and attendance"""
+    try:
+        query = """
+            SELECT s.student_id, s.enrollment_number, s.date_of_birth, s.phone_number,
+                   s.address, s.city, s.state, s.postal_code, s.enrollment_date,
+                   u.user_id, u.first_name, u.last_name, u.email, u.username
+            FROM students s
+            JOIN users u ON s.user_id = u.user_id
+            WHERE s.student_id = %s
+        """
+        student = db.fetch_one(query, [student_id])
+        
+        if not student:
+            flash('Student not found', 'error')
+            return redirect(url_for('students.list_students'))
+        
+        # Get recent attendance (last 30 records)
+        attendance_query = """
+            SELECT attendance_id, attendance_date, status, remarks
+            FROM attendance
+            WHERE student_id = %s
+            ORDER BY attendance_date DESC
+            LIMIT 30
+        """
+        attendance = db.fetch_all(attendance_query, [student_id])
+        
+        return render_template('students/detail.html', student=student, attendance=attendance)
+    except Exception as e:
+        flash(f'Error: {str(e)}', 'error')
+        return redirect(url_for('students.list_students'))

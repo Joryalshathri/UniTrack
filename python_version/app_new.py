@@ -10,6 +10,7 @@ from routes.auth import auth_bp
 from routes.dashboard import dashboard_bp
 from routes.students import students_bp
 from routes.attendance import attendance_bp
+from routes.reports import reports_bp
 
 def create_app():
     """Application factory"""
@@ -21,6 +22,7 @@ def create_app():
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(students_bp)
     app.register_blueprint(attendance_bp)
+    app.register_blueprint(reports_bp)
     
     # Home route redirect
     @app.route('/')
